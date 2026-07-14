@@ -10,6 +10,7 @@
 <title>Sổ Thu Trọ</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%2320423b'/%3E%3Cpath d='M50 22 L80 46 V80 H20 V46 Z' fill='none' stroke='%23e8c766' stroke-width='6' stroke-linejoin='round'/%3E%3Crect x='42' y='58' width='16' height='22' fill='%23e8c766'/%3E%3C/svg%3E">
 <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%2320423b'/%3E%3Cpath d='M50 22 L80 46 V80 H20 V46 Z' fill='none' stroke='%23e8c766' stroke-width='6' stroke-linejoin='round'/%3E%3Crect x='42' y='58' width='16' height='22' fill='%23e8c766'/%3E%3C/svg%3E">
+<link rel="manifest" href="manifest.json">
 <style>
 :root{
   --bg:#eef1ea;
@@ -1340,7 +1341,51 @@ function openInvoice(roomId, month){
   if(!e){ openEntryForm(roomId, month); return; }
   UI.modal = {type:"invoice", roomId:roomId, month:month};
   openModal("Hoá đơn · "+monthLabel(month), invoiceHTML(roomId, month));
+  upgradeQrImage();
 }
+
+/* ---- QR image: pre-fetch as data URL so it's reliably present when printing / exporting as image ---- */
+var QR_DATA_CACHE = {};
+function loadQrDataUrl(url, cb){
+  if(QR_DATA_CACHE[url]!==undefined){ cb(QR_DATA_CACHE[url]); return; }
+  fetch(url, {mode:"cors"}).then(function(r){
+    if(!r.ok) throw new Error("bad status");
+    return r.blob();
+  }).then(function(blob){
+    var reader = new FileReader();
+    reader.onload = function(){ QR_DATA_CACHE[url] = reader.result; cb(reader.result); };
+    reader.onerror = function(){ QR_DATA_CACHE[url] = null; cb(null); };
+    reader.readAsDataURL(blob);
+  }).catch(function(){ QR_DATA_CACHE[url] = null; cb(null); });
+}
+function upgradeQrImage(){
+  var img = document.getElementById("qrImg");
+  if(!img) return;
+  var url = img.getAttribute("data-qrurl");
+  if(!url) return;
+  loadQrDataUrl(url, function(dataUrl){
+    var stillThere = document.getElementById("qrImg");
+    if(stillThere && dataUrl) stillThere.src = dataUrl;
+  });
+}
+/* wait for every <img> inside a container to finish loading (success or error) before calling cb */
+function whenImagesReady(container, cb){
+  if(!container){ cb(); return; }
+  var imgs = container.querySelectorAll("img");
+  var pending = 0, done = false;
+  function finish(){ if(done) return; done = true; cb(); }
+  imgs.forEach(function(img){
+    if(!img.complete){
+      pending++;
+      img.addEventListener("load", tick);
+      img.addEventListener("error", tick);
+    }
+  });
+  function tick(){ pending--; if(pending<=0) finish(); }
+  if(pending===0) finish();
+  setTimeout(finish, 3000); // safety timeout so a stuck image never blocks printing/sharing forever
+}
+
 function invoiceHTML(roomId, month){
   var room = getRoom(roomId);
   var e = getEntry(roomId, month);
@@ -1387,7 +1432,7 @@ function invoiceHTML(roomId, month){
     html += '  <div class="footer-info">Chuyển khoản: '+esc(s.bankAccountName||"")+' · '+esc(s.bankName||"")+' · STK '+esc(s.bankAccountNumber||"")+'</div>';
     var qr = vietQrUrl(s.bankBin, s.bankAccountNumber, b.total, (room.name+" T"+month).replace(/[^A-Za-z0-9 ]/g,""), s.bankAccountName);
     if(qr){
-      html += '<div class="qr-wrap"><img src="'+qr+'" alt="QR chuyển khoản" onerror="this.parentNode.style.display=\'none\'"><div class="qr-hint">Quét mã để chuyển khoản đúng số tiền</div></div>';
+      html += '<div class="qr-wrap"><img id="qrImg" data-qrurl="'+esc(qr)+'" crossorigin="anonymous" src="'+qr+'" alt="QR chuyển khoản" onerror="this.parentNode.style.display=\'none\'"><div class="qr-hint">Quét mã để chuyển khoản đúng số tiền</div></div>';
     }
   }
   if(showWifiInfo && s.wifiName){
@@ -1554,8 +1599,20 @@ function saveBatchEntriesNow(month){
 function printInvoiceNow(){
   var content = document.getElementById("invoiceContent");
   if(!content) return;
-  document.getElementById("printArea").innerHTML = content.innerHTML;
-  window.print();
+  var printArea = document.getElementById("printArea");
+  function doCopyAndPrint(){
+    printArea.innerHTML = content.innerHTML;
+    whenImagesReady(printArea, function(){ window.print(); });
+  }
+  var img = content.querySelector("#qrImg");
+  if(img && img.src.indexOf("data:")!==0){
+    loadQrDataUrl(img.getAttribute("data-qrurl"), function(dataUrl){
+      if(dataUrl) img.src = dataUrl;
+      doCopyAndPrint();
+    });
+  } else {
+    doCopyAndPrint();
+  }
 }
 function invoiceAsText(roomId, month){
   var room = getRoom(roomId), e = getEntry(roomId, month), b = computeBreakdown(e);
@@ -1588,7 +1645,23 @@ function shareInvoiceImage(roomId, month){
   var content = document.getElementById("invoiceContent");
   if(!content || typeof html2canvas!=="function"){ shareInvoiceNow(roomId, month); return; }
   toast("Đang tạo ảnh hoá đơn…");
-  html2canvas(content, {backgroundColor:"#eef1ea", scale:2}).then(function(canvas){
+  var img = content.querySelector("#qrImg");
+  function renderCanvas(){
+    whenImagesReady(content, function(){
+      html2canvas(content, {backgroundColor:"#eef1ea", scale:2, useCORS:true}).then(onCanvas).catch(function(){
+        toast("Không tạo được ảnh, thử Chia sẻ văn bản"); shareInvoiceNow(roomId, month);
+      });
+    });
+  }
+  if(img && img.src.indexOf("data:")!==0){
+    loadQrDataUrl(img.getAttribute("data-qrurl"), function(dataUrl){
+      if(dataUrl) img.src = dataUrl;
+      renderCanvas();
+    });
+  } else {
+    renderCanvas();
+  }
+  function onCanvas(canvas){
     canvas.toBlob(function(blob){
       if(!blob){ shareInvoiceNow(roomId, month); return; }
       var room = getRoom(roomId);
@@ -1606,7 +1679,7 @@ function shareInvoiceImage(roomId, month){
         toast("Đã lưu ảnh hoá đơn — chọn Zalo/ứng dụng khác để gửi ảnh vừa lưu");
       }
     }, "image/png");
-  }).catch(function(){ toast("Không tạo được ảnh, thử Chia sẻ văn bản"); shareInvoiceNow(roomId, month); });
+  }
 }
 
 /* ================= event delegation ================= */
@@ -1709,6 +1782,11 @@ document.addEventListener("keydown", function(ev){
 })();
 
 /* ================= bootstrap ================= */
+if("serviceWorker" in navigator && (location.protocol==="https:" || location.hostname==="localhost")){
+  window.addEventListener("load", function(){
+    navigator.serviceWorker.register("./sw.js").catch(function(){});
+  });
+}
 render();
 
 
