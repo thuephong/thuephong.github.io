@@ -92,8 +92,8 @@ Mình không có công cụ Android SDK để tự biên dịch ra file `.apk` t
 
 1. Vào https://github.com → tạo tài khoản miễn phí nếu chưa có.
 2. Bấm **New repository** → đặt tên bất kỳ (ví dụ `so-thu-tro`) → chọn **Public** → Create repository.
-3. Bấm **Add file → Upload files** → kéo thả **tất cả** các file: `index.html`, `manifest.json`, `sw.js`, `privacy.html`, và cả thư mục `icons` (4 file .png bên trong) → Commit changes.
-   - Quan trọng: giữ nguyên đúng tên file và cấu trúc thư mục `icons/` như đã tải về.
+3. Bấm **Add file → Upload files** → kéo thả **tất cả** các file: `index.html`, `manifest.json`, `sw.js`, `privacy.html`, `.nojekyll`, và cả thư mục `icons` (4 file .png bên trong) → Commit changes.
+   - Quan trọng: giữ nguyên đúng tên file và cấu trúc thư mục `icons/` như đã tải về. File `.nojekyll` là file rỗng, không có nội dung — cứ tải lên như các file khác (một số trình duyệt ẩn file có dấu chấm ở đầu, nếu không kéo thả được thì dùng "Create new file" trên GitHub và gõ tên `.nojekyll`, để trống nội dung, Commit).
 4. Vào **Settings → Pages** → mục "Branch" chọn `main` → Save. Đợi 1-2 phút, GitHub sẽ cho bạn một địa chỉ dạng `https://<tên-bạn>.github.io/so-thu-tro/`.
 5. Mở thử địa chỉ đó trên điện thoại — app phải chạy y như file mở trực tiếp, nhưng giờ đã là một trang web thật (https).
 
@@ -102,7 +102,20 @@ Mình không có công cụ Android SDK để tự biên dịch ra file `.apk` t
 1. Vào https://www.pwabuilder.com
 2. Dán địa chỉ `https://<tên-bạn>.github.io/so-thu-tro/index.html` vào ô tìm kiếm → bấm Start.
 3. PWABuilder sẽ quét và chấm điểm (Manifest, Service Worker, Security) — nếu thiếu gì nó sẽ gợi ý ngay trên trang.
-4. Bấm **Package for stores → Android** → để mặc định các tuỳ chọn → **Generate** → tải file `.apk` (cài thử ngay trên điện thoại) hoặc `.aab` (dùng để nộp lên Google Play).
+4. Bấm **Package for stores → Android** → để mặc định các tuỳ chọn → **Generate** → tải về một file `.zip` (bên trong có file `.apk` để cài thử, file `.aab` để nộp Google Play, và một file quan trọng tên `assetlinks.json`).
+
+### Bước 2.5 — Bắt buộc: xác thực để app mở toàn màn hình, không hiện thanh địa chỉ trình duyệt
+
+Đây là bước hay bị bỏ sót nhất, và là lý do khiến app trông giống như "chỉ mở trình duyệt" thay vì mở như app thật: Android cần xác nhận rằng chính bạn là chủ của cả website lẫn app, thông qua một file gọi là **Digital Asset Links**. Nếu thiếu bước này, app vẫn chạy được nhưng sẽ hiện thanh địa chỉ ở trên giống trình duyệt.
+
+1. Mở file `.zip` PWABuilder vừa tải, tìm file **`assetlinks.json`** bên trong (thường ở thư mục gốc hoặc thư mục `android`).
+2. Trong repo GitHub của bạn (`so-thu-tro`), tạo một thư mục tên đúng **`.well-known`** (có dấu chấm ở đầu), rồi tạo file `assetlinks.json` bên trong đó, dán đúng nội dung từ file PWABuilder vừa tải.
+   - Trên giao diện web GitHub: **Add file → Create new file** → gõ tên `.well-known/assetlinks.json` (gõ luôn cả dấu `/`, GitHub sẽ tự tạo thư mục) → dán nội dung → Commit.
+3. **Rất quan trọng với GitHub Pages**: tạo thêm một file rỗng tên đúng **`.nojekyll`** ở thư mục gốc của repo (file này mình đã đính kèm sẵn trong gói zip gửi kèm). Nếu thiếu file này, GitHub có thể tự động bỏ qua thư mục `.well-known` và không phục vụ được file `assetlinks.json`.
+4. Đợi 1-2 phút cho GitHub Pages cập nhật, sau đó mở thử địa chỉ `https://<tên-bạn>.github.io/so-thu-tro/.well-known/assetlinks.json` trên trình duyệt máy tính — phải thấy nội dung JSON hiện ra (không phải trang lỗi 404).
+5. Gỡ cài đặt app `.apk` cũ trên điện thoại (nếu đã cài) → cài lại file `.apk` mới → mở lại. Lúc này app sẽ mở toàn màn hình, không còn thanh địa chỉ nữa.
+
+Nếu làm xong bước 4 mà vẫn thấy lỗi 404, khả năng cao là thiếu file `.nojekyll` hoặc gõ sai tên thư mục `.well-known` (rất dễ gõ nhầm vì có dấu chấm ở đầu) — kiểm tra lại chính xác tên file/thư mục.
 
 ### Bước 3 (tuỳ chọn): Đăng lên Google Play
 
