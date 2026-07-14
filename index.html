@@ -474,6 +474,7 @@ a{color:inherit;}
    Du lieu luu 100% cuc bo tren may (localStorage).
    ========================================================= */
 
+var APP_VERSION = "2026.07.14-3";
 var STORAGE_KEY = "sotrotro_data_v1";
 
 function defaultData(){
@@ -1042,8 +1043,17 @@ function writeAutoSaveFile(){
   });
 }
 function renderAutoSaveFileSection(){
-  if(!AUTOSAVE_SUPPORTED) return "";
   var html = '<div class="section-title"><h2>Tệp sao lưu tự động trên máy (nâng cao)</h2></div><div class="card">';
+  if(!AUTOSAVE_SUPPORTED){
+    html += '<p class="hint" style="margin-top:0;">Chưa dùng được mục này trên trình duyệt hiện tại của bạn (thiếu tính năng <code>showSaveFilePicker</code>). Vài cách thử:</p>';
+    html += '<ul class="hint" style="margin:0 0 10px;padding-left:18px;line-height:1.7;">'+
+      '<li>Cập nhật Chrome lên bản mới nhất qua Google Play, rồi mở lại app.</li>'+
+      '<li>Mở app <b>Chrome</b> bình thường (không phải icon app đã cài) → gõ địa chỉ <code>chrome://flags</code> → tìm "experimental web platform features" → chọn Enabled → bấm Relaunch → mở lại app.</li>'+
+      '</ul>';
+    html += '<p class="hint" style="margin:0;">Đây là tính năng thử nghiệm, có thể vẫn chưa bật được trên một số máy/phiên bản Chrome dù đã thử các cách trên — không sao cả, dùng "Xuất file sao lưu" thủ công + Google Drive bên dưới vẫn đủ an toàn.</p>';
+    html += '</div>';
+    return html;
+  }
   html += '<p class="hint" style="margin-top:0;">Chọn thêm 1 file thật, riêng biệt trên điện thoại (ví dụ trong thư mục Downloads) — ứng dụng sẽ tự ghi đè vào đúng file đó mỗi khi có gì thay đổi, như một bản sao lưu sống, tách biệt hẳn khỏi bộ nhớ Chrome nên an toàn hơn nếu lỡ bị xoá dữ liệu trình duyệt.</p>';
   if(AUTOSAVE_HANDLE){
     html += '<div class="switch-row"><span class="switch-label">Đang tự lưu vào: '+esc(AUTOSAVE_NAME)+'</span></div>';
@@ -1248,7 +1258,11 @@ function renderSettings(){
   html += '<input type="file" id="importFile" accept="application/json" style="display:none;">';
   html += '</div>';
 
-  html += '<p class="center muted" style="font-size:11.5px;margin-top:4px;">Sổ Thu Trọ · dữ liệu lưu cục bộ, không kết nối internet</p>';
+  html += '<div class="card" style="text-align:center;">';
+  html += '<button class="btn btn-outline btn-block" data-action="forceUpdate">Buộc cập nhật phiên bản mới nhất</button>';
+  html += '<div class="hint" style="margin-top:8px;">Dùng khi bạn vừa tải bản cập nhật lên nhưng app vẫn hiện giao diện cũ. Chỉ xoá bộ nhớ đệm hiển thị — <b>không đụng đến dữ liệu phòng trọ đã nhập</b>.</div>';
+  html += '</div>';
+  html += '<p class="center muted" style="font-size:11.5px;margin-top:4px;">Sổ Thu Trọ · phiên bản '+APP_VERSION+' · dữ liệu lưu cục bộ, không kết nối internet</p>';
 
   html += '</div>';
   return html;
@@ -1853,6 +1867,7 @@ document.addEventListener("click", function(ev){
   else if(action==="exportData") exportDataNow();
   else if(action==="importData") document.getElementById("importFile").click();
   else if(action==="resetData") resetAllData();
+  else if(action==="forceUpdate") forceUpdateApp();
   else if(action==="driveSignIn") driveSignIn();
   else if(action==="driveUpload") driveUploadNow();
   else if(action==="driveDownload") driveDownloadNow();
@@ -2025,6 +2040,31 @@ function resetAllData(){
   saveData();
   setTab("dashboard");
   toast("Đã xoá toàn bộ dữ liệu");
+}
+
+/* ---- force-update: clear only the service-worker cache + registration, never touches saved data ---- */
+function forceUpdateApp(){
+  toast("Đang xoá bộ nhớ đệm và tải lại…");
+  var tasks = [];
+  if("serviceWorker" in navigator){
+    tasks.push(
+      navigator.serviceWorker.getRegistrations().then(function(regs){
+        return Promise.all(regs.map(function(r){ return r.unregister(); }));
+      }).catch(function(){})
+    );
+  }
+  if(window.caches){
+    tasks.push(
+      caches.keys().then(function(keys){
+        return Promise.all(keys.map(function(k){ return caches.delete(k); }));
+      }).catch(function(){})
+    );
+  }
+  Promise.all(tasks).then(function(){
+    location.reload(true);
+  }).catch(function(){
+    location.reload(true);
+  });
 }
 
 /* ---------------- modal ---------------- */

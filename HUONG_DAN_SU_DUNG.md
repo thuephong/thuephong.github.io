@@ -74,6 +74,12 @@ Trong Cài đặt có mục **"Tệp sao lưu tự động trên máy"**. Đây 
 
 Lưu ý: tính năng này cần Chrome khá mới và chỉ hoạt động khi mở qua địa chỉ https (đã host), mục này sẽ **tự ẩn đi** nếu điện thoại/trình duyệt chưa hỗ trợ — khi đó bạn dùng "Xuất file sao lưu" thủ công + Google Drive ở dưới là đủ an toàn rồi, không bắt buộc phải có mục này.
 
+**Nếu không thấy mục này hiện ra** (bản mới sẽ hiện ra kèm gợi ý ngay trong Cài đặt thay vì ẩn hẳn), thử theo thứ tự:
+1. Cập nhật Chrome lên bản mới nhất qua Google Play.
+2. Mở app **Chrome** (mở trực tiếp, không phải qua icon app đã cài) → gõ `chrome://flags` vào thanh địa chỉ → tìm "experimental web platform features" → chọn **Enabled** → bấm **Relaunch** → mở lại app.
+
+Đây là API còn khá mới trên Android nên không phải máy nào cũng bật được, kể cả sau khi thử 2 cách trên — không sao, các cách sao lưu khác vẫn đủ dùng.
+
 ## Đồng bộ qua Google Drive (dùng chung nhiều điện thoại)
 
 Đây là tính năng nâng cao, có **2 điều kiện bắt buộc** vì quy định bảo mật của Google:
@@ -93,6 +99,21 @@ Nếu bạn chỉ dùng 1 điện thoại, không cần mục này — sao lưu 
 ## Về việc tự động đọc số điện/nước từ ảnh chụp
 
 Mình chưa làm tính năng này trong bản này, vì nó cần gọi một dịch vụ AI đọc ảnh (OCR) có trả phí và cần API key riêng của bạn — không thể chạy "miễn phí, offline" như phần còn lại của app. Nếu bạn muốn, mình có thể làm thêm ở bản sau: bạn tự đăng ký một API key (ví dụ Google Cloud Vision hoặc OpenAI/Anthropic), dán vào Cài đặt, app sẽ gọi dịch vụ đó để đọc số từ ảnh khi có mạng. Cứ nói khi bạn cần.
+
+## App vẫn hiện giao diện cũ sau khi cập nhật — làm sao xoá cache?
+
+Đây là lỗi khá phổ biến với app kiểu này, và **nguyên nhân không nằm ở file .apk** — nhiều người (kể cả mình lúc đầu) hay lầm tưởng cài lại .apk là sẽ được bản mới, nhưng thực ra:
+
+> App cài trên máy chỉ là "vỏ" mở ra đúng địa chỉ web của bạn. Giao diện thật sự được Chrome tải về và **lưu tạm (cache)** ngay trên chính website đó — gỡ/cài lại app không đụng gì đến bộ nhớ cache này cả, vì nó nằm ở phía Chrome/website, không nằm trong file .apk.
+
+Mình đã sửa file `sw.js` (service worker) để từ nay **mỗi lần bạn tải bản mới lên GitHub, app sẽ tự nhận bản mới ngay** khi có mạng, không bị kẹt ở bản cũ nữa (trước đây service worker cũ lỡ ưu tiên bản lưu tạm hơn bản mới — đã sửa lại thành ưu tiên tải bản mới nhất khi có mạng, chỉ dùng bản lưu tạm lúc mất mạng).
+
+**Để xử lý ngay tình trạng hiện tại của bạn:**
+1. Cập nhật lại 2 file `index.html` và `sw.js` (bản mới nhất mình gửi kèm) lên đúng chỗ cũ trong GitHub repo (Add file → Upload files, chọn Commit để ghi đè file cũ).
+2. Mở app trên điện thoại → vào **Cài đặt → cuộn xuống cuối → bấm "Buộc cập nhật phiên bản mới nhất"**. Nút này chỉ xoá bộ nhớ đệm hiển thị, **không đụng đến dữ liệu phòng trọ bạn đã nhập**.
+3. Nếu vẫn chưa thấy đổi: đóng hẳn app (không chỉ bấm về màn hình chính, mà vuốt tắt hẳn khỏi danh sách app đang chạy) rồi mở lại.
+
+Từ lần cập nhật này về sau, mỗi khi mình gửi bạn bản mới, bạn chỉ cần: tải file mới đè lên GitHub → mở app → bấm "Buộc cập nhật phiên bản mới nhất" 1 lần là xong, không cần đóng gói/cài lại .apk mỗi lần (chỉ cần đóng gói lại .apk khi bạn muốn đổi icon hoặc tên app hiển thị ngoài màn hình).
 
 ## Đóng gói thành app Android thật (.apk) để cài như từ Google Play
 
