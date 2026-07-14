@@ -525,6 +525,7 @@ function loadData(){
 
 function saveData(){
   localStorage.setItem(STORAGE_KEY, JSON.stringify(DATA));
+  scheduleAutoSaveWrite();
 }
 
 var DATA = loadData();
@@ -930,6 +931,134 @@ function vietQrUrl(bin, account, amount, addInfo, accountName){
   return url;
 }
 
+/* ---------------- Auto-save to a real file on the device (File System Access API, when supported) ---------------- */
+var AUTOSAVE_HANDLE = null;
+var AUTOSAVE_NAME = "";
+var AUTOSAVE_NEEDS_PERMISSION = false;
+var AUTOSAVE_SUPPORTED = (typeof window.showSaveFilePicker === "function");
+var _autoSaveTimer = null;
+
+function fsDbOpen(cb){
+  if(!window.indexedDB){ cb(null); return; }
+  try{
+    var req = indexedDB.open("sotrotro_fs", 1);
+    req.onupgradeneeded = function(){ req.result.createObjectStore("handles"); };
+    req.onsuccess = function(){ cb(req.result); };
+    req.onerror = function(){ cb(null); };
+  }catch(e){ cb(null); }
+}
+function fsSaveHandle(handle, cb){
+  fsDbOpen(function(db){
+    if(!db){ cb(false); return; }
+    try{
+      var tx = db.transaction("handles","readwrite");
+      tx.objectStore("handles").put(handle, "autosave");
+      tx.oncomplete = function(){ cb(true); };
+      tx.onerror = function(){ cb(false); };
+    }catch(e){ cb(false); }
+  });
+}
+function fsLoadHandle(cb){
+  fsDbOpen(function(db){
+    if(!db){ cb(null); return; }
+    try{
+      var tx = db.transaction("handles","readonly");
+      var req = tx.objectStore("handles").get("autosave");
+      req.onsuccess = function(){ cb(req.result||null); };
+      req.onerror = function(){ cb(null); };
+    }catch(e){ cb(null); }
+  });
+}
+function fsClearHandle(cb){
+  fsDbOpen(function(db){
+    if(!db){ cb(false); return; }
+    try{
+      var tx = db.transaction("handles","readwrite");
+      tx.objectStore("handles").delete("autosave");
+      tx.oncomplete = function(){ cb(true); };
+      tx.onerror = function(){ cb(false); };
+    }catch(e){ cb(false); }
+  });
+}
+function initAutoSaveFile(){
+  if(!AUTOSAVE_SUPPORTED) return;
+  fsLoadHandle(function(handle){
+    if(!handle) return;
+    AUTOSAVE_HANDLE = handle;
+    AUTOSAVE_NAME = handle.name || "";
+    handle.queryPermission({mode:"readwrite"}).then(function(p){
+      AUTOSAVE_NEEDS_PERMISSION = (p!=="granted");
+      if(UI.tab==="settings") render();
+    }).catch(function(){ AUTOSAVE_NEEDS_PERMISSION = true; });
+  });
+}
+function connectAutoSaveFile(){
+  if(!AUTOSAVE_SUPPORTED){ toast("Trình duyệt này chưa hỗ trợ tính năng lưu ra file riêng"); return; }
+  window.showSaveFilePicker({
+    suggestedName: "so-thu-tro-du-lieu.json",
+    types: [{description:"Dữ liệu Sổ Thu Trọ", accept:{"application/json":[".json"]}}]
+  }).then(function(handle){
+    AUTOSAVE_HANDLE = handle;
+    AUTOSAVE_NAME = handle.name;
+    AUTOSAVE_NEEDS_PERMISSION = false;
+    fsSaveHandle(handle, function(){});
+    writeAutoSaveFile();
+    toast("Đã kết nối, sẽ tự lưu vào: "+handle.name);
+    render();
+  }).catch(function(err){
+    if(err && err.name==="AbortError") return;
+    toast("Không chọn được file");
+  });
+}
+function disconnectAutoSaveFile(){
+  AUTOSAVE_HANDLE = null; AUTOSAVE_NAME = ""; AUTOSAVE_NEEDS_PERMISSION = false;
+  fsClearHandle(function(){});
+  toast("Đã ngắt kết nối file trên máy");
+  render();
+}
+function reauthorizeAutoSaveFile(){
+  if(!AUTOSAVE_HANDLE) return;
+  AUTOSAVE_HANDLE.requestPermission({mode:"readwrite"}).then(function(p){
+    AUTOSAVE_NEEDS_PERMISSION = (p!=="granted");
+    if(!AUTOSAVE_NEEDS_PERMISSION){ writeAutoSaveFile(); toast("Đã cấp lại quyền, tiếp tục lưu tự động"); }
+    else { toast("Chưa được cấp quyền"); }
+    render();
+  }).catch(function(){ toast("Không cấp được quyền"); });
+}
+function scheduleAutoSaveWrite(){
+  if(!AUTOSAVE_HANDLE) return;
+  clearTimeout(_autoSaveTimer);
+  _autoSaveTimer = setTimeout(writeAutoSaveFile, 500);
+}
+function writeAutoSaveFile(){
+  if(!AUTOSAVE_HANDLE) return;
+  AUTOSAVE_HANDLE.createWritable().then(function(w){
+    return w.write(JSON.stringify(DATA,null,2)).then(function(){ return w.close(); });
+  }).then(function(){
+    if(AUTOSAVE_NEEDS_PERMISSION){ AUTOSAVE_NEEDS_PERMISSION = false; if(UI.tab==="settings") render(); }
+  }).catch(function(){
+    AUTOSAVE_NEEDS_PERMISSION = true;
+    if(UI.tab==="settings") render();
+  });
+}
+function renderAutoSaveFileSection(){
+  if(!AUTOSAVE_SUPPORTED) return "";
+  var html = '<div class="section-title"><h2>Tệp sao lưu tự động trên máy (nâng cao)</h2></div><div class="card">';
+  html += '<p class="hint" style="margin-top:0;">Chọn thêm 1 file thật, riêng biệt trên điện thoại (ví dụ trong thư mục Downloads) — ứng dụng sẽ tự ghi đè vào đúng file đó mỗi khi có gì thay đổi, như một bản sao lưu sống, tách biệt hẳn khỏi bộ nhớ Chrome nên an toàn hơn nếu lỡ bị xoá dữ liệu trình duyệt.</p>';
+  if(AUTOSAVE_HANDLE){
+    html += '<div class="switch-row"><span class="switch-label">Đang tự lưu vào: '+esc(AUTOSAVE_NAME)+'</span></div>';
+    if(AUTOSAVE_NEEDS_PERMISSION){
+      html += '<div class="warn-banner">Trình duyệt đã thu hồi quyền ghi file (bình thường, xảy ra sau một thời gian không mở app). Bấm nút bên dưới để cấp lại — dữ liệu bạn nhập vẫn an toàn trong lúc chờ.</div>';
+      html += '<button class="btn btn-primary btn-block" data-action="reauthAutoSave">Cấp lại quyền ghi file</button>';
+    }
+    html += '<button class="btn btn-ghost btn-block" style="margin-top:8px;" data-action="disconnectAutoSave">Ngắt kết nối file này</button>';
+  } else {
+    html += '<button class="btn btn-primary btn-block" data-action="connectAutoSave">Chọn / tạo file trên máy</button>';
+  }
+  html += '</div>';
+  return html;
+}
+
 /* ---------------- Google Drive sync (optional, needs HTTPS hosting + own Client ID) ---------------- */
 var DRIVE_TOKEN = null;
 function renderDriveSection(){
@@ -1106,6 +1235,7 @@ function renderSettings(){
   html += '<div class="field"><textarea data-action="settingsField" data-field="note">'+esc(s.note)+'</textarea></div>';
   html += '</div>';
 
+  html += renderAutoSaveFileSection();
   html += renderDriveSection();
 
   html += '<div class="section-title"><h2>Sao lưu dữ liệu (trên máy)</h2></div><div class="card">';
@@ -1726,6 +1856,9 @@ document.addEventListener("click", function(ev){
   else if(action==="driveSignIn") driveSignIn();
   else if(action==="driveUpload") driveUploadNow();
   else if(action==="driveDownload") driveDownloadNow();
+  else if(action==="connectAutoSave") connectAutoSaveFile();
+  else if(action==="disconnectAutoSave") disconnectAutoSaveFile();
+  else if(action==="reauthAutoSave") reauthorizeAutoSaveFile();
 });
 
 document.addEventListener("input", function(ev){
@@ -1782,6 +1915,7 @@ document.addEventListener("keydown", function(ev){
 })();
 
 /* ================= bootstrap ================= */
+initAutoSaveFile();
 if("serviceWorker" in navigator && (location.protocol==="https:" || location.hostname==="localhost")){
   window.addEventListener("load", function(){
     navigator.serviceWorker.register("./sw.js").catch(function(){});
