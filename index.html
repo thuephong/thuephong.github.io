@@ -279,6 +279,64 @@ textarea{resize:vertical;min-height:64px;}
   background:none;border:none;padding:4px 0;
 }
 .divider{height:1px;background:var(--line);margin:14px 0;border:none;}
+.field-label-row{
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
+  margin-bottom:6px;
+}
+.field-label-row label{margin-bottom:0;}
+.edit-old-btn{
+  appearance:none;border:none;cursor:pointer;font-family:inherit;
+  font-size:11px;font-weight:700;color:var(--primary);
+  background:var(--primary-soft);border-radius:7px;padding:3px 9px;
+  flex:0 0 auto;
+}
+input[readonly]{background:var(--bg);color:var(--ink-soft);}
+.input-error{border-color:var(--danger) !important;background:var(--danger-soft) !important;}
+
+/* ---------- drag to reorder rooms ---------- */
+.room-list{display:flex;flex-direction:column;gap:10px;}
+.drag-handle{
+  flex:0 0 auto;width:22px;height:36px;margin-right:-2px;
+  display:flex;align-items:center;justify-content:center;
+  color:var(--ink-soft);cursor:grab;touch-action:none;opacity:.55;
+}
+.drag-handle svg{width:16px;height:16px;}
+.room-card.dragging{
+  box-shadow:0 10px 26px -6px rgba(20,30,25,.35);
+  opacity:.96;position:relative;z-index:5;
+}
+
+/* ---------- clickable ledger row ---------- */
+.ledger-row.link-row{cursor:pointer;}
+.ledger-row.link-row .val{color:var(--accent);}
+
+/* ---------- stats tab ---------- */
+.stat-card{margin-bottom:0;}
+.stat-room{font-weight:800;font-size:14.5px;}
+.stat-chart-label{
+  font-size:12px;font-weight:700;color:var(--ink-soft);
+  display:flex;align-items:center;gap:6px;
+}
+.stat-chart-label svg{width:13px;height:13px;}
+.stat-delta{
+  margin-left:auto;font-size:11px;font-weight:800;padding:2px 7px;border-radius:999px;
+  background:var(--primary-soft);color:var(--primary);
+}
+.stat-delta.up{background:var(--danger-soft);color:var(--danger);}
+.stat-delta.down{background:var(--ok-soft);color:var(--ok);}
+.stat-bars{
+  display:flex;align-items:flex-end;gap:5px;height:58px;margin:6px 0 2px;
+}
+.stat-bar{
+  flex:1;min-height:2px;border-radius:4px 4px 2px 2px;
+  background:var(--primary-soft);
+}
+.stat-bar.last{background:var(--primary);}
+.stat-bar.up{background:var(--danger);}
+.stat-bar.down{background:var(--ok);}
+.stat-months{display:flex;gap:5px;font-size:10px;color:var(--ink-soft);margin-bottom:2px;}
+.stat-months span{flex:1;text-align:center;}
+.admin-note-card textarea{min-height:56px;}
 
 /* ---------- modal / sheet ---------- */
 #modalRoot{position:fixed;inset:0;z-index:100;pointer-events:none;}
@@ -474,7 +532,7 @@ a{color:inherit;}
    Du lieu luu 100% cuc bo tren may (localStorage).
    ========================================================= */
 
-var APP_VERSION = "2026.07.14-3";
+var APP_VERSION = "2026.07.15-1";
 var STORAGE_KEY = "sotrotro_data_v1";
 
 function defaultData(){
@@ -500,6 +558,7 @@ function defaultData(){
       cutoffDay: 10,
       currency: "đ",
       note: "Vui lòng thanh toán đúng hẹn. Cảm ơn quý khách!",
+      adminNote: "",
       driveClientId: "",
       driveLastSync: null
     },
@@ -661,6 +720,27 @@ function monthSummary(month){
   return {rooms:rooms.length, doneCount:doneCount, paidCount:paidCount, totalRent:totalRent, totalElec:totalElec, totalWater:totalWater, totalOther:totalOther, totalAll:totalAll, received:received, remaining:totalAll-received};
 }
 
+function showPendingRoomsModal(month){
+  UI.modal = {type:"pendingRooms", month:month};
+  var rooms = activeRooms().filter(function(r){ return !getEntry(r.id, month); });
+  var html = "";
+  if(rooms.length===0){
+    html += '<div class="hint">Tất cả phòng đã được nhập số điện nước tháng '+monthLabel(month)+'. 🎉</div>';
+  } else {
+    html += '<div class="hint" style="margin-bottom:12px;">'+rooms.length+' phòng chưa nhập số điện nước tháng '+monthLabel(month)+'. Bấm vào phòng để nhập ngay.</div>';
+    html += '<div class="room-list">';
+    rooms.forEach(function(r){
+      html += '<div class="room-card" data-action="openEntryForm" data-room="'+r.id+'" data-month="'+month+'">'+
+        '<div class="avatar">'+esc(roomInitial(r.name))+'</div>'+
+        '<div class="body"><div class="name">'+esc(r.name)+'</div>'+
+        '<div class="meta">'+(r.tenantName? esc(r.tenantName): "Chưa có người thuê")+'</div></div>'+
+        '<div class="chevron">'+ICONS.chevron+'</div></div>';
+    });
+    html += '</div>';
+  }
+  openModal("Phòng còn trống", html);
+}
+
 /* ---------------- icons ---------------- */
 var ICONS = {
   home:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v9a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1v-9"/></svg>',
@@ -675,7 +755,9 @@ var ICONS = {
   search:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>',
   phone:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5c0-.6.4-1 1-1h3l2 5-2 1.3a11 11 0 0 0 5 5L14.7 14l5 2v3c0 .6-.4 1-1 1A15 15 0 0 1 4 5Z"/></svg>',
   cloud:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18a4.5 4.5 0 0 1-.5-9 5.5 5.5 0 0 1 10.7-1.7A4 4 0 0 1 17 18H7Z"/></svg>',
-  camera:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8a1 1 0 0 1 1-1h2l1.2-1.8A1 1 0 0 1 9 5h6a1 1 0 0 1 .8.4L17 7h2a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V8Z"/><circle cx="12" cy="13" r="3.3"/></svg>'
+  camera:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8a1 1 0 0 1 1-1h2l1.2-1.8A1 1 0 0 1 9 5h6a1 1 0 0 1 .8.4L17 7h2a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V8Z"/><circle cx="12" cy="13" r="3.3"/></svg>',
+  grip:'<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>',
+  chart:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>'
 };
 
 /* ---------------- shared compact top bar ---------------- */
@@ -740,6 +822,8 @@ function renderDashboard(){
   html += '  <div class="ledger-row ok"><span class="lbl">Đã thu</span><span class="fill"></span><span class="val">'+fmtMoney(sum.received)+'</span></div>';
   html += '  <div class="ledger-row danger"><span class="lbl">Còn phải thu</span><span class="fill"></span><span class="val">'+fmtMoney(sum.remaining)+'</span></div>';
   html += '  <div class="ledger-row"><span class="lbl">Đã nhập số</span><span class="fill"></span><span class="val">'+sum.doneCount+'/'+sum.rooms+' phòng</span></div>';
+  var pendingCount = sum.rooms - sum.doneCount;
+  html += '  <div class="ledger-row link-row" data-action="showPendingRooms" data-month="'+month+'"><span class="lbl">Phòng còn trống</span><span class="fill"></span><span class="val">'+pendingCount+' phòng ›</span></div>';
   html += '</div>';
 
   html += '<div class="section-title"><h2>Danh sách phòng</h2><span class="link" data-action="openBatchEntry" style="cursor:pointer;">Nhập hàng loạt</span></div>';
@@ -804,28 +888,120 @@ function renderRooms(){
   } else if(active.length===0 && inactive.length===0){
     html += '<div class="room-card empty-state"><p>Không tìm thấy phòng/người thuê phù hợp.</p></div>';
   } else {
+    var canDrag = !q;
     if(active.length){
-      html += '<div class="section-title"><h2>Đang cho thuê</h2></div>';
-      active.forEach(function(r){ html += roomListItem(r); });
+      html += '<div class="section-title"><h2>Đang cho thuê</h2>'+(canDrag && active.length>1?'<span class="link">Giữ ⠿ để kéo sắp xếp</span>':'')+'</div>';
+      html += '<div class="room-list" data-section="active">';
+      active.forEach(function(r){ html += roomListItem(r, canDrag); });
+      html += '</div>';
     }
     if(inactive.length){
       html += '<div class="section-title"><h2>Đã trả phòng</h2></div>';
-      inactive.forEach(function(r){ html += roomListItem(r); });
+      html += '<div class="room-list" data-section="inactive">';
+      inactive.forEach(function(r){ html += roomListItem(r, canDrag); });
+      html += '</div>';
     }
   }
   html += '</div>';
   html += '<button class="fab" data-action="openRoomForm">'+ICONS.plus+'</button>';
   return html;
 }
-function roomListItem(r){
+function roomListItem(r, canDrag){
   var sub = r.tenantName? esc(r.tenantName)+" · "+r.occupants+" người" : r.occupants+" người ở";
   var priceSub = fmtMoney(effectiveRoomPrice(r))+"/tháng";
+  var handle = canDrag? '<div class="drag-handle">'+ICONS.grip+'</div>' : "";
   return '<div class="room-card" data-action="goRoomDetail" data-room="'+r.id+'">'+
+    handle+
     '<div class="avatar">'+esc(roomInitial(r.name))+'</div>'+
     '<div class="body"><div class="name">'+esc(r.name)+(r.active===false?' <span class="chip chip-pending">Đã trả</span>':'')+'</div>'+
     '<div class="meta">'+sub+' · '+priceSub+(r.tenantPhone?' · '+esc(r.tenantPhone):'')+'</div></div>'+
     '<div class="chevron">'+ICONS.chevron+'</div>'+
     '</div>';
+}
+
+/* ---------------- stats tab ---------------- */
+function statMonthsRange(n){
+  var arr = [];
+  for(var i=n-1;i>=0;i--) arr.push(addMonths(UI.month, -i));
+  return arr;
+}
+function statDeltaBadge(arr){
+  var last=null, prev=null;
+  for(var i=arr.length-1;i>=0;i--){
+    if(arr[i]!=null){ if(last===null){ last=arr[i]; } else { prev=arr[i]; break; } }
+  }
+  if(last===null || prev===null) return {cls:"", text:"—"};
+  var diff = last-prev;
+  if(diff===0) return {cls:"", text:"0%"};
+  var pct = prev===0? 100 : Math.round(Math.abs(diff)/prev*100);
+  return diff>0? {cls:"up", text:"▲ "+pct+"%"} : {cls:"down", text:"▼ "+pct+"%"};
+}
+function statBarsHTML(arr){
+  var vals = arr.map(function(v){ return v==null? 0 : v; });
+  var max = Math.max.apply(Math, vals.concat([1]));
+  var lastIdx = -1;
+  for(var i=arr.length-1;i>=0;i--){ if(arr[i]!=null){ lastIdx=i; break; } }
+  var prevIdx = -1;
+  for(var i=lastIdx-1;i>=0;i--){ if(arr[i]!=null){ prevIdx=i; break; } }
+  var html = '<div class="stat-bars">';
+  arr.forEach(function(v,i){
+    var h = v==null? 2 : Math.max(4, Math.round((v/max)*54));
+    var cls = "stat-bar";
+    if(i===lastIdx){
+      if(prevIdx>-1 && v>arr[prevIdx]) cls += " up";
+      else if(prevIdx>-1 && v<arr[prevIdx]) cls += " down";
+      else cls += " last";
+    }
+    html += '<div class="'+cls+'" style="height:'+h+'px" title="'+(v==null?"Chưa nhập số":fmtNum(v))+'"></div>';
+  });
+  html += '</div>';
+  return html;
+}
+function statCardHTML(r, months, elecArr, waterArr){
+  var elecDelta = statDeltaBadge(elecArr);
+  var waterDelta = statDeltaBadge(waterArr);
+  var monthsLbl = months.map(function(mk){ return "T"+monthKeyParts(mk).m; });
+  var monthsHtml = '<div class="stat-months">'+monthsLbl.map(function(m){return '<span>'+m+'</span>';}).join("")+'</div>';
+  var html = '<div class="card stat-card">';
+  html += '<div class="stat-room">'+esc(r.name)+(r.tenantName? ' <span class="chip chip-pending" style="margin-top:0;">'+esc(r.tenantName)+'</span>':'')+'</div>';
+  html += '<div class="stat-chart-label">'+ICONS.bolt+' Điện (kWh)<span class="stat-delta '+elecDelta.cls+'">'+elecDelta.text+'</span></div>';
+  html += statBarsHTML(elecArr);
+  html += monthsHtml;
+  html += '<div class="stat-chart-label" style="margin-top:8px;">'+ICONS.drop+' Nước (m³)<span class="stat-delta '+waterDelta.cls+'">'+waterDelta.text+'</span></div>';
+  html += statBarsHTML(waterArr);
+  html += monthsHtml;
+  html += '</div>';
+  return html;
+}
+function renderStats(){
+  var months = statMonthsRange(6);
+  var rooms = activeRooms();
+  var html = "";
+  html += topBar({
+    icon: ICONS.chart,
+    title: "Thống kê",
+    sub: "Chỉ số điện, nước "+months.length+" tháng gần nhất"
+  });
+  html += '<div class="content">';
+  if(rooms.length===0){
+    html += '<div class="room-card empty-state"><div class="icon">📊</div>'+
+      '<div style="font-weight:700;font-size:15px;">Chưa có dữ liệu để thống kê</div>'+
+      '<p>Thêm phòng và nhập số điện nước hàng tháng để xem biểu đồ tại đây.</p></div>';
+  } else {
+    rooms.forEach(function(r){
+      var elecArr=[], waterArr=[];
+      months.forEach(function(mk){
+        var e = getEntry(r.id, mk);
+        if(e){
+          var b = computeBreakdown(e);
+          elecArr.push(b.elecUsage); waterArr.push(b.waterUsage);
+        } else { elecArr.push(null); waterArr.push(null); }
+      });
+      html += statCardHTML(r, months, elecArr, waterArr);
+    });
+  }
+  html += '</div>';
+  return html;
 }
 
 /* ---------------- room detail ---------------- */
@@ -1201,6 +1377,12 @@ function renderSettings(){
   });
   html += '<div class="content">';
 
+  html += '<div class="section-title"><h2>Ghi chú riêng (chỉ bạn thấy)</h2></div>';
+  html += '<div class="card admin-note-card">';
+  html += '<div class="field" style="margin-bottom:0;"><textarea data-action="settingsField" data-field="adminNote" placeholder="Ghi chú riêng tư cho bạn — không hiển thị trên hoá đơn hay bất kỳ đâu khác trong app...">'+esc(s.adminNote||"")+'</textarea></div>';
+  html += '<div class="hint">Chỉ hiện ở đây, trong phần Cài đặt. Không in trên hoá đơn hay bất kỳ màn hình nào khác.</div>';
+  html += '</div>';
+
   html += '<div class="section-title"><h2>Chủ trọ</h2></div><div class="card">';
   html += sField("Tên chủ trọ / nhà trọ", "ownerName", s.ownerName);
   html += sField("Số điện thoại", "phone", s.phone, {type:"tel"});
@@ -1391,11 +1573,11 @@ function entryFormHTML(roomId, month){
     '<input type="hidden" id="e_occ" value="'+occ+'"></div></div>';
 
   html += '<div class="row2">';
-  html += '<div class="field"><label>Số điện cũ</label><input type="text" inputmode="numeric" id="e_elecOld" value="'+fmtNum(elecOld)+'" data-money="1"></div>';
+  html += '<div class="field"><div class="field-label-row"><label>Số điện cũ</label><button type="button" class="edit-old-btn" data-action="unlockOldReading" data-target="e_elecOld">Sửa</button></div><input type="text" inputmode="numeric" id="e_elecOld" value="'+fmtNum(elecOld)+'" data-money="1" readonly></div>';
   html += '<div class="field"><label>Số điện mới</label><input type="text" inputmode="numeric" id="e_elecNew" value="'+(elecNew===""?"":fmtNum(elecNew))+'" data-money="1" placeholder="Nhập số mới"></div>';
   html += '</div>';
   html += '<div class="row2">';
-  html += '<div class="field"><label>Số nước cũ</label><input type="text" inputmode="numeric" id="e_waterOld" value="'+fmtNum(waterOld)+'" data-money="1"></div>';
+  html += '<div class="field"><div class="field-label-row"><label>Số nước cũ</label><button type="button" class="edit-old-btn" data-action="unlockOldReading" data-target="e_waterOld">Sửa</button></div><input type="text" inputmode="numeric" id="e_waterOld" value="'+fmtNum(waterOld)+'" data-money="1" readonly></div>';
   html += '<div class="field"><label>Số nước mới</label><input type="text" inputmode="numeric" id="e_waterNew" value="'+(waterNew===""?"":fmtNum(waterNew))+'" data-money="1" placeholder="Nhập số mới"></div>';
   html += '</div>';
   html += '<div class="hint" style="margin:-8px 0 12px;">Nếu tháng này không đo được số nước/điện, bạn có thể để số mới bằng số cũ — hệ thống sẽ tự tính theo mức tối thiểu.</div>';
@@ -1828,6 +2010,8 @@ function shareInvoiceImage(roomId, month){
 
 /* ================= event delegation ================= */
 document.addEventListener("click", function(ev){
+  if(suppressNextClick){ suppressNextClick = false; return; }
+  if(ev.target.closest && ev.target.closest(".drag-handle")) return;
   var el = ev.target.closest("[data-action]");
   if(!el) return;
   var action = el.getAttribute("data-action");
@@ -1846,6 +2030,9 @@ document.addEventListener("click", function(ev){
   else if(action==="saveRoom") saveRoomFromForm(roomId||null);
   else if(action==="toggleRoomActive") toggleRoomActive(roomId);
   else if(action==="deleteRoom") deleteRoomConfirm(roomId);
+  else if(action==="confirmDeleteRoom") confirmDeleteRoom(roomId);
+  else if(action==="showPendingRooms") showPendingRoomsModal(month);
+  else if(action==="unlockOldReading") unlockOldReading(el.getAttribute("data-target"));
   else if(action==="openEntryForm") openEntryForm(roomId, month);
   else if(action==="saveEntry") saveEntryFromForm(roomId, month);
   else if(action==="deleteEntry") deleteEntryFor(roomId, month);
@@ -1929,6 +2116,99 @@ document.addEventListener("keydown", function(ev){
   }, {passive:true});
 })();
 
+/* ---- drag to reorder rooms ---- */
+var roomDrag = null;
+var roomDragMoved = false;
+var suppressNextClick = false;
+
+document.addEventListener("pointerdown", function(ev){
+  var handle = ev.target.closest(".drag-handle");
+  if(!handle) return;
+  var card = handle.closest(".room-card");
+  var list = card && card.closest(".room-list");
+  if(!card || !list) return;
+  ev.preventDefault();
+  roomDragMoved = false;
+  roomDrag = { card: card, list: list, startY: ev.clientY };
+  card.classList.add("dragging");
+  card.style.transform = "translateY(0px)";
+  try{ handle.setPointerCapture(ev.pointerId); }catch(e){}
+});
+
+document.addEventListener("pointermove", function(ev){
+  if(!roomDrag) return;
+  ev.preventDefault();
+  var dy = ev.clientY - roomDrag.startY;
+  if(Math.abs(dy)>4) roomDragMoved = true;
+  roomDrag.card.style.transform = "translateY("+dy+"px)";
+  var siblings = Array.prototype.slice.call(roomDrag.list.children).filter(function(c){ return c!==roomDrag.card; });
+  var cardRect = roomDrag.card.getBoundingClientRect();
+  var cardMid = cardRect.top + cardRect.height/2;
+  for(var i=0;i<siblings.length;i++){
+    var s = siblings[i];
+    var r = s.getBoundingClientRect();
+    var mid = r.top + r.height/2;
+    if(dy<0 && cardMid<mid){
+      roomDrag.list.insertBefore(roomDrag.card, s);
+      roomDrag.startY = ev.clientY;
+      roomDrag.card.style.transform = "translateY(0px)";
+      break;
+    } else if(dy>0 && cardMid>mid){
+      roomDrag.list.insertBefore(roomDrag.card, s.nextElementSibling);
+      roomDrag.startY = ev.clientY;
+      roomDrag.card.style.transform = "translateY(0px)";
+      break;
+    }
+  }
+}, {passive:false});
+
+function finishRoomDrag(){
+  if(!roomDrag) return;
+  var card = roomDrag.card, list = roomDrag.list;
+  card.classList.remove("dragging");
+  card.style.transform = "";
+  if(roomDragMoved){
+    var ids = Array.prototype.slice.call(list.children).map(function(c){ return c.getAttribute("data-room"); });
+    var isActive = list.getAttribute("data-section")==="active";
+    var queue = ids.slice();
+    DATA.rooms = DATA.rooms.map(function(r){
+      if((r.active!==false)===isActive){
+        var id = queue.shift();
+        return getRoom(id) || r;
+      }
+      return r;
+    });
+    saveData();
+    suppressNextClick = true;
+    setTimeout(function(){ suppressNextClick = false; }, 60);
+    render();
+  }
+  roomDrag = null;
+}
+document.addEventListener("pointerup", finishRoomDrag);
+document.addEventListener("pointercancel", finishRoomDrag);
+
+/* ---- swipe left/right on dashboard to change month ---- */
+(function(){
+  var startX=null, startY=null;
+  var appEl = document.getElementById("app");
+  appEl.addEventListener("touchstart", function(ev){
+    if(UI.tab==="dashboard" && !UI.modal && ev.touches.length===1){
+      startX = ev.touches[0].clientX; startY = ev.touches[0].clientY;
+    } else { startX = null; }
+  }, {passive:true});
+  appEl.addEventListener("touchend", function(ev){
+    if(startX==null || UI.tab!=="dashboard") return;
+    var dx = ev.changedTouches[0].clientX - startX;
+    var dy = ev.changedTouches[0].clientY - startY;
+    startX = null;
+    if(Math.abs(dx)>60 && Math.abs(dx)>Math.abs(dy)*1.5){
+      if(dx<0){ if(UI.month < maxAllowedMonth()){ UI.month = addMonths(UI.month,1); render(); } }
+      else { UI.month = addMonths(UI.month,-1); render(); }
+    }
+  }, {passive:true});
+})();
+
 /* ================= bootstrap ================= */
 initAutoSaveFile();
 if("serviceWorker" in navigator && (location.protocol==="https:" || location.hostname==="localhost")){
@@ -1952,19 +2232,36 @@ function deleteRoomConfirm(roomId){
   var r = getRoom(roomId);
   if(!r) return;
   var n = roomEntries(roomId).length;
+  UI.modal = {type:"deleteRoomConfirm", roomId:roomId};
   var msg = n>0
-    ? "Phòng \""+r.name+"\" có "+n+" tháng dữ liệu. Xoá phòng sẽ xoá toàn bộ lịch sử này. Tiếp tục?"
-    : "Xoá phòng \""+r.name+"\"?";
-  if(!confirm(msg)) return;
+    ? "Phòng \""+esc(r.name)+"\" có "+n+" tháng dữ liệu. Xoá phòng sẽ xoá toàn bộ lịch sử này và không thể hoàn tác."
+    : "Xoá phòng \""+esc(r.name)+"\"? Hành động này không thể hoàn tác.";
+  var html = '<div class="warn-banner">'+msg+'</div>'+
+    '<div class="field" style="margin-top:14px;"><label>Nhập <b>OK</b> để xác nhận xoá</label>'+
+    '<input type="text" id="deleteConfirmInput" placeholder="Nhập OK" autocomplete="off" autocapitalize="off" autocorrect="off"></div>'+
+    '<button class="btn btn-danger btn-block" data-action="confirmDeleteRoom" data-room="'+roomId+'">Xoá phòng</button>';
+  openModal("Xác nhận xoá phòng", html);
+}
+function confirmDeleteRoom(roomId){
+  var r = getRoom(roomId);
+  if(!r) return;
+  var el = document.getElementById("deleteConfirmInput");
+  var val = el? el.value.trim() : "";
+  if(val!=="OK"){
+    toast("Vui lòng nhập đúng chữ OK để xác nhận");
+    if(el){ el.classList.add("input-error"); el.focus(); }
+    return;
+  }
   DATA.rooms = DATA.rooms.filter(function(x){return x.id!==roomId;});
   DATA.entries = DATA.entries.filter(function(e){return e.roomId!==roomId;});
   saveData();
+  closeModal();
   setTab("rooms");
   toast("Đã xoá phòng");
 }
 
 /* ---------------- settings save ---------------- */
-var SETTINGS_TEXT_FIELDS = {ownerName:1, phone:1, bankName:1, bankBin:1, bankAccountName:1, bankAccountNumber:1, wifiName:1, wifiPassword:1, note:1, currency:1, driveClientId:1};
+var SETTINGS_TEXT_FIELDS = {ownerName:1, phone:1, bankName:1, bankBin:1, bankAccountName:1, bankAccountNumber:1, wifiName:1, wifiPassword:1, note:1, adminNote:1, currency:1, driveClientId:1};
 function saveSettingsField(el){
   var field = el.getAttribute("data-field");
   var val = el.value;
@@ -1990,6 +2287,13 @@ function toggleAdvBlock(){
   var block = document.getElementById("advBlock");
   if(!block) return;
   block.style.display = (block.style.display==="none")? "block" : "none";
+}
+function unlockOldReading(targetId){
+  var el = document.getElementById(targetId);
+  if(!el) return;
+  el.removeAttribute("readonly");
+  el.focus();
+  try{ el.select(); }catch(e){}
 }
 
 /* ---------------- backup / restore ---------------- */
@@ -2097,6 +2401,7 @@ function render(){
   if(UI.tab==="dashboard") app.innerHTML = renderDashboard();
   else if(UI.tab==="rooms") app.innerHTML = renderRooms();
   else if(UI.tab==="roomDetail") app.innerHTML = renderRoomDetail(UI.roomId);
+  else if(UI.tab==="stats") app.innerHTML = renderStats();
   else if(UI.tab==="settings") app.innerHTML = renderSettings();
 }
 
@@ -2104,6 +2409,7 @@ function renderTabbarHTML(){
   var tabs = [
     {id:"dashboard", label:"Tổng quan", icon:ICONS.home},
     {id:"rooms", label:"Phòng", icon:ICONS.bed},
+    {id:"stats", label:"Thống kê", icon:ICONS.chart},
     {id:"settings", label:"Cài đặt", icon:ICONS.gear}
   ];
   var activeTab = (UI.tab==="roomDetail")? "rooms" : UI.tab;
