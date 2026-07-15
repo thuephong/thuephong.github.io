@@ -296,14 +296,30 @@ input[readonly]{background:var(--bg);color:var(--ink-soft);}
 /* ---------- drag to reorder rooms ---------- */
 .room-list{display:flex;flex-direction:column;gap:10px;}
 .drag-handle{
-  flex:0 0 auto;width:22px;height:36px;margin-right:-2px;
+  flex:0 0 auto;width:44px;height:44px;margin:-4px -8px -4px -4px;
   display:flex;align-items:center;justify-content:center;
-  color:var(--ink-soft);cursor:grab;touch-action:none;opacity:.55;
+  color:var(--ink-soft);cursor:grab;touch-action:none;
+  border-radius:10px;
 }
-.drag-handle svg{width:64px;height:64px;}
+.drag-handle:active{background:var(--primary-soft);color:var(--primary);}
+.drag-handle svg{width:20px;height:20px;}
 .room-card.dragging{
-  box-shadow:0 10px 26px -6px rgba(20,30,25,.35);
-  opacity:.96;position:relative;z-index:5;
+  box-shadow:0 14px 30px -6px rgba(20,30,25,.4);
+  opacity:.97;position:relative;z-index:5;transform:scale(1.02);
+}
+.sort-toggle{
+  display:flex;gap:6px;margin-bottom:2px;
+}
+.sort-toggle button{
+  font-size:11.5px;font-weight:700;padding:5px 10px;border-radius:999px;
+  border:1.5px solid var(--line);background:var(--paper);color:var(--ink-soft);
+}
+.sort-toggle button.active{background:var(--primary);color:#fff;border-color:var(--primary);}
+.order-input{
+  flex:0 0 auto;width:40px;height:36px;margin-right:2px;
+  text-align:center;font-weight:800;font-size:14px;
+  border:1.5px solid var(--line);border-radius:9px;padding:0;
+  color:var(--primary);background:var(--paper);
 }
 
 /* ---------- clickable ledger row ---------- */
@@ -336,6 +352,18 @@ input[readonly]{background:var(--bg);color:var(--ink-soft);}
 .stat-bar.down{background:var(--ok);}
 .stat-months{display:flex;gap:5px;font-size:10px;color:var(--ink-soft);margin-bottom:2px;}
 .stat-months span{flex:1;text-align:center;}
+.stat-pay-bars{display:flex;align-items:flex-end;gap:5px;height:44px;margin:6px 0 2px;}
+.stat-pay-bar{flex:1;min-height:2px;border-radius:4px 4px 2px 2px;overflow:hidden;display:flex;flex-direction:column-reverse;background:var(--line);}
+.stat-pay-bar .seg-paid{background:var(--ok);width:100%;}
+.stat-pay-bar .seg-owed{background:var(--danger);width:100%;}
+.stat-pay-summary{font-size:11.5px;color:var(--ink-soft);margin-top:2px;}
+.stat-pay-summary b{color:var(--ink);}
+.stat-range-toggle{display:flex;gap:6px;margin:2px 2px 4px;}
+.stat-range-toggle button{
+  font-size:11.5px;font-weight:700;padding:5px 12px;border-radius:999px;
+  border:1.5px solid var(--line);background:var(--paper);color:var(--ink-soft);
+}
+.stat-range-toggle button.active{background:var(--primary);color:#fff;border-color:var(--primary);}
 .admin-note-card textarea{min-height:56px;}
 
 /* ---------- modal / sheet ---------- */
@@ -532,7 +560,7 @@ a{color:inherit;}
    Du lieu luu 100% cuc bo tren may (localStorage).
    ========================================================= */
 
-var APP_VERSION = "2026.07.15-1";
+var APP_VERSION = "2026.07.15-2";
 var STORAGE_KEY = "sotrotro_data_v1";
 
 function defaultData(){
@@ -595,6 +623,8 @@ var UI = {
   month: todayMonthKey(),
   roomId: null,
   roomSearch: "",
+  roomSortMode: "drag",
+  statRange: 6,
   modal: null
 };
 
@@ -720,20 +750,20 @@ function monthSummary(month){
   return {rooms:rooms.length, doneCount:doneCount, paidCount:paidCount, totalRent:totalRent, totalElec:totalElec, totalWater:totalWater, totalOther:totalOther, totalAll:totalAll, received:received, remaining:totalAll-received};
 }
 
-function showPendingRoomsModal(month){
-  UI.modal = {type:"pendingRooms", month:month};
-  var rooms = activeRooms().filter(function(r){ return !getEntry(r.id, month); });
+function showVacantRoomsModal(){
+  UI.modal = {type:"vacantRooms"};
+  var rooms = DATA.rooms.filter(function(r){ return r.active===false; });
   var html = "";
   if(rooms.length===0){
-    html += '<div class="hint">Tất cả phòng đã được nhập số điện nước tháng '+monthLabel(month)+'. 🎉</div>';
+    html += '<div class="hint">Hiện không có phòng nào đang trống — tất cả đều đã có người thuê. 🎉</div>';
   } else {
-    html += '<div class="hint" style="margin-bottom:12px;">'+rooms.length+' phòng chưa nhập số điện nước tháng '+monthLabel(month)+'. Bấm vào phòng để nhập ngay.</div>';
+    html += '<div class="hint" style="margin-bottom:12px;">'+rooms.length+' phòng đang trống (đã trả phòng, chưa có người thuê mới). Bấm vào phòng để cập nhật người thuê mới hoặc cho thuê lại.</div>';
     html += '<div class="room-list">';
     rooms.forEach(function(r){
-      html += '<div class="room-card" data-action="openEntryForm" data-room="'+r.id+'" data-month="'+month+'">'+
+      html += '<div class="room-card" data-action="goRoomDetailFromModal" data-room="'+r.id+'">'+
         '<div class="avatar">'+esc(roomInitial(r.name))+'</div>'+
         '<div class="body"><div class="name">'+esc(r.name)+'</div>'+
-        '<div class="meta">'+(r.tenantName? esc(r.tenantName): "Chưa có người thuê")+'</div></div>'+
+        '<div class="meta">Trả phòng gần nhất'+(r.tenantName? " · "+esc(r.tenantName)+" (cũ)":"")+'</div></div>'+
         '<div class="chevron">'+ICONS.chevron+'</div></div>';
     });
     html += '</div>';
@@ -822,8 +852,8 @@ function renderDashboard(){
   html += '  <div class="ledger-row ok"><span class="lbl">Đã thu</span><span class="fill"></span><span class="val">'+fmtMoney(sum.received)+'</span></div>';
   html += '  <div class="ledger-row danger"><span class="lbl">Còn phải thu</span><span class="fill"></span><span class="val">'+fmtMoney(sum.remaining)+'</span></div>';
   html += '  <div class="ledger-row"><span class="lbl">Đã nhập số</span><span class="fill"></span><span class="val">'+sum.doneCount+'/'+sum.rooms+' phòng</span></div>';
-  var pendingCount = sum.rooms - sum.doneCount;
-  html += '  <div class="ledger-row link-row" data-action="showPendingRooms" data-month="'+month+'"><span class="lbl">Phòng còn trống</span><span class="fill"></span><span class="val">'+pendingCount+' phòng ›</span></div>';
+  var vacantCount = DATA.rooms.filter(function(r){ return r.active===false; }).length;
+  html += '  <div class="ledger-row link-row" data-action="showVacantRooms"><span class="lbl">Phòng còn trống</span><span class="fill"></span><span class="val">'+vacantCount+' phòng ›</span></div>';
   html += '</div>';
 
   html += '<div class="section-title"><h2>Danh sách phòng</h2><span class="link" data-action="openBatchEntry" style="cursor:pointer;">Nhập hàng loạt</span></div>';
@@ -888,17 +918,24 @@ function renderRooms(){
   } else if(active.length===0 && inactive.length===0){
     html += '<div class="room-card empty-state"><p>Không tìm thấy phòng/người thuê phù hợp.</p></div>';
   } else {
-    var canDrag = !q;
+    var canReorder = !q;
+    var sortMode = UI.roomSortMode || "drag";
+    if(canReorder && (active.length>1 || inactive.length>1)){
+      html += '<div class="sort-toggle">'+
+        '<button data-action="setSortMode" data-mode="drag" class="'+(sortMode==="drag"?"active":"")+'">Giữ ⠿ kéo thả</button>'+
+        '<button data-action="setSortMode" data-mode="number" class="'+(sortMode==="number"?"active":"")+'">Đánh số thứ tự</button>'+
+        '</div>';
+    }
     if(active.length){
-      html += '<div class="section-title"><h2>Đang cho thuê</h2>'+(canDrag && active.length>1?'<span class="link">Giữ ⠿ để kéo sắp xếp</span>':'')+'</div>';
+      html += '<div class="section-title"><h2>Đang cho thuê</h2></div>';
       html += '<div class="room-list" data-section="active">';
-      active.forEach(function(r){ html += roomListItem(r, canDrag); });
+      active.forEach(function(r,i){ html += roomListItem(r, canReorder, sortMode, i, active.length); });
       html += '</div>';
     }
     if(inactive.length){
       html += '<div class="section-title"><h2>Đã trả phòng</h2></div>';
       html += '<div class="room-list" data-section="inactive">';
-      inactive.forEach(function(r){ html += roomListItem(r, canDrag); });
+      inactive.forEach(function(r,i){ html += roomListItem(r, canReorder, sortMode, i, inactive.length); });
       html += '</div>';
     }
   }
@@ -906,10 +943,18 @@ function renderRooms(){
   html += '<button class="fab" data-action="openRoomForm">'+ICONS.plus+'</button>';
   return html;
 }
-function roomListItem(r, canDrag){
+function roomListItem(r, canReorder, sortMode, index, total){
   var sub = r.tenantName? esc(r.tenantName)+" · "+r.occupants+" người" : r.occupants+" người ở";
   var priceSub = fmtMoney(effectiveRoomPrice(r))+"/tháng";
-  var handle = canDrag? '<div class="drag-handle">'+ICONS.grip+'</div>' : "";
+  var handle = "";
+  if(canReorder && total>1){
+    if(sortMode==="number"){
+      handle = '<input class="order-input" type="text" inputmode="numeric" value="'+(index+1)+'" '+
+        'data-action="reorderByNumber" data-room="'+r.id+'" data-section="'+(r.active===false?"inactive":"active")+'">';
+    } else {
+      handle = '<div class="drag-handle">'+ICONS.grip+'</div>';
+    }
+  }
   return '<div class="room-card" data-action="goRoomDetail" data-room="'+r.id+'">'+
     handle+
     '<div class="avatar">'+esc(roomInitial(r.name))+'</div>'+
@@ -957,11 +1002,37 @@ function statBarsHTML(arr){
   html += '</div>';
   return html;
 }
-function statCardHTML(r, months, elecArr, waterArr){
+/* pay: array of {total, received} or null per month, for the "collected vs owed" trend */
+function statPaymentBarsHTML(pay){
+  var totals = pay.map(function(p){ return p? p.total : 0; });
+  var max = Math.max.apply(Math, totals.concat([1]));
+  var html = '<div class="stat-pay-bars">';
+  pay.forEach(function(p){
+    if(!p){
+      html += '<div class="stat-pay-bar" style="height:2px;" title="Chưa nhập số"></div>';
+      return;
+    }
+    var h = Math.max(4, Math.round((p.total/max)*40));
+    var received = p.received==null? 0 : Math.min(p.received, p.total);
+    var paidRatio = p.total>0? (received/p.total) : 1;
+    var paidH = Math.round(h*paidRatio);
+    var owedH = h-paidH;
+    var title = p.received==null? "Chưa thu ("+fmtMoney(p.total)+")" : "Đã thu "+fmtMoney(p.received)+" / "+fmtMoney(p.total);
+    html += '<div class="stat-pay-bar" style="height:'+h+'px" title="'+title+'">'+
+      (owedH>0? '<div class="seg-owed" style="height:'+owedH+'px"></div>':'')+
+      (paidH>0? '<div class="seg-paid" style="height:'+paidH+'px"></div>':'')+
+      '</div>';
+  });
+  html += '</div>';
+  return html;
+}
+function statCardHTML(r, months, elecArr, waterArr, payArr){
   var elecDelta = statDeltaBadge(elecArr);
   var waterDelta = statDeltaBadge(waterArr);
   var monthsLbl = months.map(function(mk){ return "T"+monthKeyParts(mk).m; });
   var monthsHtml = '<div class="stat-months">'+monthsLbl.map(function(m){return '<span>'+m+'</span>';}).join("")+'</div>';
+  var totalCollected=0, totalOwed=0;
+  payArr.forEach(function(p){ if(p){ var rec=p.received==null?0:p.received; totalCollected+=rec; totalOwed+=Math.max(0,p.total-rec); } });
   var html = '<div class="card stat-card">';
   html += '<div class="stat-room">'+esc(r.name)+(r.tenantName? ' <span class="chip chip-pending" style="margin-top:0;">'+esc(r.tenantName)+'</span>':'')+'</div>';
   html += '<div class="stat-chart-label">'+ICONS.bolt+' Điện (kWh)<span class="stat-delta '+elecDelta.cls+'">'+elecDelta.text+'</span></div>';
@@ -970,17 +1041,22 @@ function statCardHTML(r, months, elecArr, waterArr){
   html += '<div class="stat-chart-label" style="margin-top:8px;">'+ICONS.drop+' Nước (m³)<span class="stat-delta '+waterDelta.cls+'">'+waterDelta.text+'</span></div>';
   html += statBarsHTML(waterArr);
   html += monthsHtml;
+  html += '<div class="stat-chart-label" style="margin-top:8px;">Thanh toán (xanh=đã thu, đỏ=còn nợ)</div>';
+  html += statPaymentBarsHTML(payArr);
+  html += monthsHtml;
+  html += '<div class="stat-pay-summary">'+months.length+' tháng: đã thu <b>'+fmtMoney(totalCollected)+'</b>'+(totalOwed>0? ' · còn nợ <b style="color:var(--danger);">'+fmtMoney(totalOwed)+'</b>':' · không nợ')+'</div>';
   html += '</div>';
   return html;
 }
 function renderStats(){
-  var months = statMonthsRange(6);
+  var range = UI.statRange || 6;
+  var months = statMonthsRange(range);
   var rooms = activeRooms();
   var html = "";
   html += topBar({
     icon: ICONS.chart,
     title: "Thống kê",
-    sub: "Chỉ số điện, nước "+months.length+" tháng gần nhất"
+    sub: "Điện, nước & thanh toán "+months.length+" tháng gần nhất"
   });
   html += '<div class="content">';
   if(rooms.length===0){
@@ -988,16 +1064,21 @@ function renderStats(){
       '<div style="font-weight:700;font-size:15px;">Chưa có dữ liệu để thống kê</div>'+
       '<p>Thêm phòng và nhập số điện nước hàng tháng để xem biểu đồ tại đây.</p></div>';
   } else {
+    html += '<div class="stat-range-toggle">'+
+      '<button data-action="setStatRange" data-range="6" class="'+(range===6?"active":"")+'">6 tháng</button>'+
+      '<button data-action="setStatRange" data-range="12" class="'+(range===12?"active":"")+'">12 tháng</button>'+
+      '</div>';
     rooms.forEach(function(r){
-      var elecArr=[], waterArr=[];
+      var elecArr=[], waterArr=[], payArr=[];
       months.forEach(function(mk){
         var e = getEntry(r.id, mk);
         if(e){
           var b = computeBreakdown(e);
           elecArr.push(b.elecUsage); waterArr.push(b.waterUsage);
-        } else { elecArr.push(null); waterArr.push(null); }
+          payArr.push({total:b.total, received:e.received});
+        } else { elecArr.push(null); waterArr.push(null); payArr.push(null); }
       });
-      html += statCardHTML(r, months, elecArr, waterArr);
+      html += statCardHTML(r, months, elecArr, waterArr, payArr);
     });
   }
   html += '</div>';
@@ -2012,6 +2093,7 @@ function shareInvoiceImage(roomId, month){
 document.addEventListener("click", function(ev){
   if(suppressNextClick){ suppressNextClick = false; return; }
   if(ev.target.closest && ev.target.closest(".drag-handle")) return;
+  if(ev.target.closest && ev.target.closest(".order-input")) return;
   var el = ev.target.closest("[data-action]");
   if(!el) return;
   var action = el.getAttribute("data-action");
@@ -2026,12 +2108,13 @@ document.addEventListener("click", function(ev){
     if(e) openInvoice(roomId, UI.month); else openEntryForm(roomId, UI.month);
   }
   else if(action==="goRoomDetail") openRoomDetail(roomId);
+  else if(action==="goRoomDetailFromModal"){ closeModal(); openRoomDetail(roomId); }
   else if(action==="openRoomForm") openRoomForm(roomId||null);
   else if(action==="saveRoom") saveRoomFromForm(roomId||null);
   else if(action==="toggleRoomActive") toggleRoomActive(roomId);
   else if(action==="deleteRoom") deleteRoomConfirm(roomId);
   else if(action==="confirmDeleteRoom") confirmDeleteRoom(roomId);
-  else if(action==="showPendingRooms") showPendingRoomsModal(month);
+  else if(action==="showVacantRooms") showVacantRoomsModal();
   else if(action==="unlockOldReading") unlockOldReading(el.getAttribute("data-target"));
   else if(action==="openEntryForm") openEntryForm(roomId, month);
   else if(action==="saveEntry") saveEntryFromForm(roomId, month);
@@ -2050,6 +2133,8 @@ document.addEventListener("click", function(ev){
   else if(action==="stepUp") stepOccupants(1);
   else if(action==="stepDown") stepOccupants(-1);
   else if(action==="toggleAdv") toggleAdvBlock();
+  else if(action==="setSortMode"){ UI.roomSortMode = el.getAttribute("data-mode"); render(); }
+  else if(action==="setStatRange"){ UI.statRange = parseInt(el.getAttribute("data-range"),10)||6; render(); }
   else if(action==="toggleNoWifi"){ el.classList.toggle("on"); }
   else if(action==="exportData") exportDataNow();
   else if(action==="importData") document.getElementById("importFile").click();
@@ -2081,6 +2166,7 @@ document.addEventListener("change", function(ev){
   var el = ev.target;
   if(el.getAttribute && el.getAttribute("data-action")==="settingsField") saveSettingsField(el);
   if(el.id==="importFile") handleImportFile(el);
+  if(el.getAttribute && el.getAttribute("data-action")==="reorderByNumber") reorderRoomByNumber(el);
 });
 
 document.addEventListener("blur", function(ev){
@@ -2120,6 +2206,8 @@ document.addEventListener("keydown", function(ev){
 var roomDrag = null;
 var roomDragMoved = false;
 var suppressNextClick = false;
+var roomDragLastY = 0;
+var roomDragScrollRAF = null;
 
 document.addEventListener("pointerdown", function(ev){
   var handle = ev.target.closest(".drag-handle");
@@ -2130,15 +2218,16 @@ document.addEventListener("pointerdown", function(ev){
   ev.preventDefault();
   roomDragMoved = false;
   roomDrag = { card: card, list: list, startY: ev.clientY };
+  roomDragLastY = ev.clientY;
   card.classList.add("dragging");
   card.style.transform = "translateY(0px)";
   try{ handle.setPointerCapture(ev.pointerId); }catch(e){}
+  if(!roomDragScrollRAF) roomDragScrollRAF = requestAnimationFrame(roomDragAutoScrollTick);
 });
 
-document.addEventListener("pointermove", function(ev){
+function updateRoomDragPosition(clientY){
   if(!roomDrag) return;
-  ev.preventDefault();
-  var dy = ev.clientY - roomDrag.startY;
+  var dy = clientY - roomDrag.startY;
   if(Math.abs(dy)>4) roomDragMoved = true;
   roomDrag.card.style.transform = "translateY("+dy+"px)";
   var siblings = Array.prototype.slice.call(roomDrag.list.children).filter(function(c){ return c!==roomDrag.card; });
@@ -2150,16 +2239,37 @@ document.addEventListener("pointermove", function(ev){
     var mid = r.top + r.height/2;
     if(dy<0 && cardMid<mid){
       roomDrag.list.insertBefore(roomDrag.card, s);
-      roomDrag.startY = ev.clientY;
+      roomDrag.startY = clientY;
       roomDrag.card.style.transform = "translateY(0px)";
       break;
     } else if(dy>0 && cardMid>mid){
       roomDrag.list.insertBefore(roomDrag.card, s.nextElementSibling);
-      roomDrag.startY = ev.clientY;
+      roomDrag.startY = clientY;
       roomDrag.card.style.transform = "translateY(0px)";
       break;
     }
   }
+}
+
+function roomDragAutoScrollTick(){
+  if(!roomDrag){ roomDragScrollRAF = null; return; }
+  var vh = window.innerHeight;
+  var edge = 90;
+  var speed = 0;
+  if(roomDragLastY < edge) speed = -Math.ceil((edge-roomDragLastY)/3);
+  else if(roomDragLastY > vh-edge) speed = Math.ceil((edge-(vh-roomDragLastY))/3);
+  if(speed!==0){
+    window.scrollBy(0, speed);
+    updateRoomDragPosition(roomDragLastY);
+  }
+  roomDragScrollRAF = requestAnimationFrame(roomDragAutoScrollTick);
+}
+
+document.addEventListener("pointermove", function(ev){
+  if(!roomDrag) return;
+  ev.preventDefault();
+  roomDragLastY = ev.clientY;
+  updateRoomDragPosition(ev.clientY);
 }, {passive:false});
 
 function finishRoomDrag(){
@@ -2167,6 +2277,7 @@ function finishRoomDrag(){
   var card = roomDrag.card, list = roomDrag.list;
   card.classList.remove("dragging");
   card.style.transform = "";
+  if(roomDragScrollRAF){ cancelAnimationFrame(roomDragScrollRAF); roomDragScrollRAF = null; }
   if(roomDragMoved){
     var ids = Array.prototype.slice.call(list.children).map(function(c){ return c.getAttribute("data-room"); });
     var isActive = list.getAttribute("data-section")==="active";
@@ -2187,6 +2298,28 @@ function finishRoomDrag(){
 }
 document.addEventListener("pointerup", finishRoomDrag);
 document.addEventListener("pointercancel", finishRoomDrag);
+
+/* ---- reorder rooms by typing a position number (mobile-friendly alternative to drag) ---- */
+function reorderRoomByNumber(el){
+  var roomId = el.getAttribute("data-room");
+  var section = el.getAttribute("data-section");
+  var isActive = section==="active";
+  var indices = [];
+  DATA.rooms.forEach(function(r,i){ if((r.active!==false)===isActive) indices.push(i); });
+  var subsequence = indices.map(function(i){ return DATA.rooms[i]; });
+  var curIdx = -1;
+  for(var i=0;i<subsequence.length;i++){ if(subsequence[i].id===roomId){ curIdx=i; break; } }
+  if(curIdx===-1) return;
+  var newPos = parseNum(el.value);
+  if(!newPos || newPos<1) newPos = 1;
+  if(newPos>subsequence.length) newPos = subsequence.length;
+  var item = subsequence.splice(curIdx,1)[0];
+  subsequence.splice(newPos-1,0,item);
+  indices.forEach(function(slot,k){ DATA.rooms[slot] = subsequence[k]; });
+  saveData();
+  render();
+  toast("Đã cập nhật thứ tự");
+}
 
 /* ---- swipe left/right on dashboard to change month ---- */
 (function(){

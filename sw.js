@@ -1,7 +1,7 @@
 // Sổ Thu Trọ — service worker: works offline, but always prefers the latest
 // version from the network when available (so updates show up immediately
 // instead of getting stuck on an old cached copy).
-var CACHE_NAME = "sotrotro-shell-v2";
+var CACHE_NAME = "sotrotro-shell-v3";
 
 // Files that rarely change: safe to serve straight from cache (fast, offline-proof).
 var STATIC_ASSETS = [

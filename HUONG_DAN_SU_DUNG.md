@@ -160,6 +160,13 @@ Nếu bạn không cần lên Google Play, chỉ cần file `.apk` ở Bước 2
 
 Nếu cần, cứ nói mình biết bạn đang vướng ở bước nào, mình hướng dẫn tiếp.
 
+## Cập nhật mới nhất (15/07/2026)
+
+- **Sửa "Phòng còn trống"**: giờ đúng nghĩa là phòng đã trả, chưa có người thuê mới (trước đó bị hiểu nhầm thành "chưa nhập số tháng này"). Bấm vào để xem danh sách và cập nhật người thuê mới.
+- **Sắp xếp phòng dễ hơn trên điện thoại**: tay cầm kéo thả (⠿) đã to hơn, có tự cuộn màn hình khi kéo tới gần mép trên/dưới. Nếu vẫn thấy khó thao tác, bấm nút **"Đánh số thứ tự"** ở đầu tab Phòng — mỗi phòng sẽ có 1 ô số, gõ số thứ tự mong muốn rồi bấm ra ngoài là xếp lại ngay, không cần kéo thả.
+- **Tab Thống kê** giờ có thêm biểu đồ **"Thanh toán"** (xanh = đã thu, đỏ = còn nợ) cho từng phòng, kèm dòng tổng kết "đã thu bao nhiêu / còn nợ bao nhiêu" trong khoảng thời gian đang xem. Có thể chọn xem 6 tháng hoặc 12 tháng gần nhất (nút chuyển ở đầu trang).
+- Các tính năng đã có từ trước vẫn giữ nguyên: vuốt trái/phải ở Tổng quan để đổi tháng, khoá số điện/nước cũ (bấm "Sửa" để mở khoá riêng từng ô), xác nhận xoá phòng bằng cách gõ chữ OK, ghi chú riêng cho admin ở đầu trang Cài đặt.
+
 ## Có thể làm thêm gì sau này
 
 - Nhắc lịch thu tiền hàng tháng (thông báo trên điện thoại).
