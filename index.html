@@ -316,8 +316,7 @@ input[readonly]{background:var(--bg);color:var(--ink-soft);}
 }
 .sort-toggle button.active{background:var(--primary);color:#fff;border-color:var(--primary);}
 .order-input{
-  width: 20% !important;
-  flex:0 0 auto;width:40px;height:36px;margin-right:2px;
+  flex:0 0 auto;width:40px;width:20% !important;height:36px;margin-right:2px;
   text-align:center;font-weight:800;font-size:14px;
   border:1.5px solid var(--line);border-radius:9px;padding:0;
   color:var(--primary);background:var(--paper);
@@ -561,7 +560,7 @@ a{color:inherit;}
    Du lieu luu 100% cuc bo tren may (localStorage).
    ========================================================= */
 
-var APP_VERSION = "2026.07.15-4";
+var APP_VERSION = "2026.07.15-5";
 var STORAGE_KEY = "sotrotro_data_v1";
 
 function defaultData(){
@@ -698,19 +697,33 @@ function toast(msg){
 
 function getRoom(id){ return DATA.rooms.find(function(r){return r.id===id;}); }
 function activeRooms(){ return DATA.rooms.filter(function(r){return r.active!==false;}); }
-/* Rooms relevant to a given month's report: currently-active rooms (so they're
-   prompted for entry) PLUS any room that actually has recorded data for that
-   month — even if it has since been checked out. This keeps past months'
-   revenue intact when a room is later marked "đã trả phòng". */
+function tsToMonthKey(ts){
+  var d = new Date(ts);
+  return d.getFullYear()+"-"+pad2(d.getMonth()+1);
+}
+/* Was this room actually relevant during `month`? Three cases:
+   1. It has a real entry that month -> always relevant, it's a recorded fact
+      (this is what keeps past revenue/₫-entered-count intact after a room is
+      later marked "đã trả phòng").
+   2. It's currently active, but didn't exist yet before its creation month
+      -> NOT relevant (fixes a brand-new room wrongly showing as "missing"
+      data in months before it was even added).
+   3. It's currently active and already existed by that month -> relevant
+      (so it's prompted for a reading).
+   A currently-inactive room with no entry that month is never relevant. */
+function roomRelevantForMonth(r, month){
+  if(getEntry(r.id, month)) return true;
+  if(r.active===false) return false;
+  var createdMonth = r.createdAt ? tsToMonthKey(r.createdAt) : null;
+  if(createdMonth && month<createdMonth) return false;
+  return true;
+}
 function roomsForMonth(month){
-  return DATA.rooms.filter(function(r){
-    return r.active!==false || !!getEntry(r.id, month);
-  });
+  return DATA.rooms.filter(function(r){ return roomRelevantForMonth(r, month); });
 }
 function roomsForMonths(months){
   return DATA.rooms.filter(function(r){
-    if(r.active!==false) return true;
-    return months.some(function(mk){ return !!getEntry(r.id, mk); });
+    return months.some(function(mk){ return roomRelevantForMonth(r, mk); });
   });
 }
 
@@ -850,11 +863,19 @@ function renderDashboard(){
 
   html += '<div class="content">';
 
-  if(rooms.length===0){
+  if(DATA.rooms.length===0){
     html += '<div class="room-card empty-state"><div class="icon">🏠</div>'+
       '<div style="font-weight:700;font-size:15px;">Chưa có phòng nào</div>'+
       '<p>Thêm phòng đầu tiên để bắt đầu ghi nhận điện, nước và tiền thuê hàng tháng.</p>'+
       '<button class="btn btn-primary" data-action="openRoomForm">'+ICONS.plus+' Thêm phòng</button>'+
+      '</div>';
+    html += '</div>';
+    return html;
+  }
+  if(rooms.length===0){
+    html += '<div class="room-card empty-state"><div class="icon">🗓️</div>'+
+      '<div style="font-weight:700;font-size:15px;">Chưa có phòng nào tồn tại trong '+monthLabel(month)+'</div>'+
+      '<p>Các phòng hiện có đều được thêm sau tháng này. Thử xem tháng gần đây hơn.</p>'+
       '</div>';
     html += '</div>';
     return html;
@@ -1075,10 +1096,14 @@ function renderStats(){
     sub: "Điện, nước & thanh toán "+months.length+" tháng gần nhất"
   });
   html += '<div class="content">';
-  if(rooms.length===0){
+  if(DATA.rooms.length===0){
     html += '<div class="room-card empty-state"><div class="icon">📊</div>'+
       '<div style="font-weight:700;font-size:15px;">Chưa có dữ liệu để thống kê</div>'+
       '<p>Thêm phòng và nhập số điện nước hàng tháng để xem biểu đồ tại đây.</p></div>';
+  } else if(rooms.length===0){
+    html += '<div class="room-card empty-state"><div class="icon">🗓️</div>'+
+      '<div style="font-weight:700;font-size:15px;">Chưa có phòng nào tồn tại trong giai đoạn này</div>'+
+      '<p>Các phòng hiện có đều được thêm gần đây hơn khoảng thời gian đang xem.</p></div>';
   } else {
     html += '<div class="stat-range-toggle">'+
       '<button data-action="setStatRange" data-range="6" class="'+(range===6?"active":"")+'">6 tháng</button>'+
@@ -1951,9 +1976,19 @@ function openBatchEntry(){
   UI.modal = {type:"batchEntry", month: UI.month};
   openModal("Nhập số hàng loạt · "+monthLabel(UI.month), batchEntryHTML(UI.month));
 }
+function activeRoomsExistingBy(month){
+  return activeRooms().filter(function(r){
+    var createdMonth = r.createdAt ? tsToMonthKey(r.createdAt) : null;
+    return !createdMonth || month>=createdMonth;
+  });
+}
 function batchEntryHTML(month){
-  var rooms = activeRooms();
-  if(rooms.length===0) return '<p class="muted">Chưa có phòng nào để nhập số.</p>';
+  var rooms = activeRoomsExistingBy(month);
+  if(rooms.length===0){
+    return DATA.rooms.length===0
+      ? '<p class="muted">Chưa có phòng nào để nhập số.</p>'
+      : '<p class="muted">Không có phòng nào đang thuê tồn tại trong '+monthLabel(month)+'.</p>';
+  }
   var html = '<div class="hint" style="margin-bottom:10px;">Nhập số điện/nước mới cho từng phòng, số cũ tự lấy từ tháng trước. Bấm Lưu tất cả khi xong.</div>';
   html += '<div class="card" style="padding:2px 14px;">';
   rooms.forEach(function(r){
@@ -1996,7 +2031,7 @@ function updateBatchRowPreview(el){
   document.getElementById("batch_total_"+roomId).textContent = "· "+fmtMoney(b.total);
 }
 function saveBatchEntriesNow(month){
-  var rooms = activeRooms();
+  var rooms = activeRoomsExistingBy(month);
   var saved = 0;
   rooms.forEach(function(r){
     var elecEl = document.getElementById("batch_elec_"+r.id);
