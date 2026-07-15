@@ -561,7 +561,7 @@ a{color:inherit;}
    Du lieu luu 100% cuc bo tren may (localStorage).
    ========================================================= */
 
-var APP_VERSION = "2026.07.15-2";
+var APP_VERSION = "2026.07.15-3";
 var STORAGE_KEY = "sotrotro_data_v1";
 
 function defaultData(){
@@ -1412,21 +1412,27 @@ function driveUploadNow(){
 }
 function driveDownloadNow(){
   if(!DRIVE_TOKEN){ toast("Đăng nhập Google trước"); return; }
-  if(!confirm("Tải dữ liệu từ Google Drive sẽ THAY THẾ dữ liệu hiện tại trên máy này. Tiếp tục?")) return;
-  driveFindFileId(function(fileId){
-    if(!fileId){ toast("Chưa có bản sao lưu nào trên Drive"); return; }
-    fetch("https://www.googleapis.com/drive/v3/files/"+fileId+"?alt=media", {
-      headers:{Authorization:"Bearer "+DRIVE_TOKEN}
-    }).then(function(r){ return r.json(); }).then(function(parsed){
-      var d = defaultData();
-      d.settings = Object.assign(d.settings, parsed.settings||{});
-      d.rooms = parsed.rooms||[];
-      d.entries = parsed.entries||[];
-      DATA = d;
-      saveData();
-      setTab("dashboard");
-      toast("Đã tải dữ liệu từ Google Drive");
-    }).catch(function(){ toast("Tải về thất bại, kiểm tra mạng."); });
+  openTypedConfirm({
+    title: "Tải dữ liệu từ Drive",
+    message: "Tải dữ liệu từ Google Drive sẽ THAY THẾ toàn bộ dữ liệu hiện tại trên máy này. Hành động không thể hoàn tác.",
+    confirmLabel: "Tải về & thay thế",
+    onConfirm: function(){
+      driveFindFileId(function(fileId){
+        if(!fileId){ toast("Chưa có bản sao lưu nào trên Drive"); return; }
+        fetch("https://www.googleapis.com/drive/v3/files/"+fileId+"?alt=media", {
+          headers:{Authorization:"Bearer "+DRIVE_TOKEN}
+        }).then(function(r){ return r.json(); }).then(function(parsed){
+          var d = defaultData();
+          d.settings = Object.assign(d.settings, parsed.settings||{});
+          d.rooms = parsed.rooms||[];
+          d.entries = parsed.entries||[];
+          DATA = d;
+          saveData();
+          setTab("dashboard");
+          toast("Đã tải dữ liệu từ Google Drive");
+        }).catch(function(){ toast("Tải về thất bại, kiểm tra mạng."); });
+      });
+    }
   });
 }
 
@@ -1735,12 +1741,17 @@ function saveEntryFromForm(roomId, month){
   openInvoice(roomId, month);
 }
 function deleteEntryFor(roomId, month){
-  if(!confirm("Xoá số liệu tháng "+monthLabel(month)+" của phòng này?")) return;
-  DATA.entries = DATA.entries.filter(function(e){ return !(e.roomId===roomId && e.month===month); });
-  saveData();
-  closeModal();
-  render();
-  toast("Đã xoá số liệu tháng này");
+  openTypedConfirm({
+    title: "Xoá số liệu tháng",
+    message: "Xoá số liệu tháng "+monthLabel(month)+" của phòng này (số điện/nước, hoá đơn, tình trạng thu tiền)? Hành động không thể hoàn tác.",
+    confirmLabel: "Xoá số liệu",
+    onConfirm: function(){
+      DATA.entries = DATA.entries.filter(function(e){ return !(e.roomId===roomId && e.month===month); });
+      saveData();
+      render();
+      toast("Đã xoá số liệu tháng này");
+    }
+  });
 }
 
 /* ---------------- invoice view ---------------- */
@@ -2114,7 +2125,7 @@ document.addEventListener("click", function(ev){
   else if(action==="saveRoom") saveRoomFromForm(roomId||null);
   else if(action==="toggleRoomActive") toggleRoomActive(roomId);
   else if(action==="deleteRoom") deleteRoomConfirm(roomId);
-  else if(action==="confirmDeleteRoom") confirmDeleteRoom(roomId);
+  else if(action==="submitTypedConfirm") submitTypedConfirm();
   else if(action==="showVacantRooms") showVacantRoomsModal();
   else if(action==="unlockOldReading") unlockOldReading(el.getAttribute("data-target"));
   else if(action==="openEntryForm") openEntryForm(roomId, month);
@@ -2362,37 +2373,52 @@ function toggleRoomActive(roomId){
   render();
   toast(r.active? "Đã chuyển sang đang cho thuê" : "Đã đánh dấu trả phòng");
 }
-function deleteRoomConfirm(roomId){
-  var r = getRoom(roomId);
-  if(!r) return;
-  var n = roomEntries(roomId).length;
-  UI.modal = {type:"deleteRoomConfirm", roomId:roomId};
-  var msg = n>0
-    ? "Phòng \""+esc(r.name)+"\" có "+n+" tháng dữ liệu. Xoá phòng sẽ xoá toàn bộ lịch sử này và không thể hoàn tác."
-    : "Xoá phòng \""+esc(r.name)+"\"? Hành động này không thể hoàn tác.";
-  var html = '<div class="warn-banner">'+msg+'</div>'+
-    '<div class="field" style="margin-top:14px;"><label>Nhập <b>OK</b> để xác nhận xoá</label>'+
-    '<input type="text" id="deleteConfirmInput" placeholder="Nhập OK" autocomplete="off" autocapitalize="off" autocorrect="off"></div>'+
-    '<button class="btn btn-danger btn-block" data-action="confirmDeleteRoom" data-room="'+roomId+'">Xoá phòng</button>';
-  openModal("Xác nhận xoá phòng", html);
+/* ---- generic typed-OK confirmation modal, reused by every destructive action ---- */
+var TYPED_CONFIRM_CALLBACK = null;
+function openTypedConfirm(opts){
+  TYPED_CONFIRM_CALLBACK = opts.onConfirm;
+  var btnClass = opts.buttonClass || "btn-danger";
+  var html = '<div class="warn-banner">'+opts.message+'</div>'+
+    '<div class="field" style="margin-top:14px;"><label>Nhập <b>OK</b> để xác nhận</label>'+
+    '<input type="text" id="typedConfirmInput" placeholder="Nhập OK" autocomplete="off" autocapitalize="off" autocorrect="off"></div>'+
+    '<button class="btn '+btnClass+' btn-block" data-action="submitTypedConfirm">'+(opts.confirmLabel||"Xác nhận")+'</button>';
+  openModal(opts.title||"Xác nhận", html);
 }
-function confirmDeleteRoom(roomId){
-  var r = getRoom(roomId);
-  if(!r) return;
-  var el = document.getElementById("deleteConfirmInput");
+function submitTypedConfirm(){
+  var el = document.getElementById("typedConfirmInput");
   var val = el? el.value.trim() : "";
   if(val!=="OK"){
     toast("Vui lòng nhập đúng chữ OK để xác nhận");
     if(el){ el.classList.add("input-error"); el.focus(); }
     return;
   }
-  DATA.rooms = DATA.rooms.filter(function(x){return x.id!==roomId;});
-  DATA.entries = DATA.entries.filter(function(e){return e.roomId!==roomId;});
-  saveData();
+  var cb = TYPED_CONFIRM_CALLBACK;
+  TYPED_CONFIRM_CALLBACK = null;
   closeModal();
-  setTab("rooms");
-  toast("Đã xoá phòng");
+  if(cb) cb();
 }
+
+function deleteRoomConfirm(roomId){
+  var r = getRoom(roomId);
+  if(!r) return;
+  var n = roomEntries(roomId).length;
+  var msg = n>0
+    ? "Phòng \""+esc(r.name)+"\" có "+n+" tháng dữ liệu. Xoá phòng sẽ xoá toàn bộ lịch sử này và không thể hoàn tác."
+    : "Xoá phòng \""+esc(r.name)+"\"? Hành động này không thể hoàn tác.";
+  openTypedConfirm({
+    title: "Xác nhận xoá phòng",
+    message: msg,
+    confirmLabel: "Xoá phòng",
+    onConfirm: function(){
+      DATA.rooms = DATA.rooms.filter(function(x){return x.id!==roomId;});
+      DATA.entries = DATA.entries.filter(function(e){return e.roomId!==roomId;});
+      saveData();
+      setTab("rooms");
+      toast("Đã xoá phòng");
+    }
+  });
+}
+
 
 /* ---------------- settings save ---------------- */
 var SETTINGS_TEXT_FIELDS = {ownerName:1, phone:1, bankName:1, bankBin:1, bankAccountName:1, bankAccountNumber:1, wifiName:1, wifiPassword:1, note:1, adminNote:1, currency:1, driveClientId:1};
@@ -2453,17 +2479,24 @@ function handleImportFile(input){
       var parsed = JSON.parse(reader.result);
       if(!parsed || !Array.isArray(parsed.rooms) || !Array.isArray(parsed.entries)){
         toast("File không đúng định dạng sao lưu");
+        input.value = "";
         return;
       }
-      if(!confirm("Nhập dữ liệu sẽ THAY THẾ toàn bộ dữ liệu hiện tại trên máy. Tiếp tục?")) return;
-      var d = defaultData();
-      d.settings = Object.assign(d.settings, parsed.settings||{});
-      d.rooms = parsed.rooms;
-      d.entries = parsed.entries;
-      DATA = d;
-      saveData();
-      setTab("dashboard");
-      toast("Đã khôi phục dữ liệu");
+      openTypedConfirm({
+        title: "Nhập file sao lưu",
+        message: "Nhập dữ liệu từ file này sẽ THAY THẾ toàn bộ dữ liệu hiện tại trên máy. Hành động không thể hoàn tác.",
+        confirmLabel: "Nhập & thay thế dữ liệu",
+        onConfirm: function(){
+          var d = defaultData();
+          d.settings = Object.assign(d.settings, parsed.settings||{});
+          d.rooms = parsed.rooms;
+          d.entries = parsed.entries;
+          DATA = d;
+          saveData();
+          setTab("dashboard");
+          toast("Đã khôi phục dữ liệu");
+        }
+      });
     }catch(err){
       toast("Không đọc được file này");
     }
@@ -2472,12 +2505,17 @@ function handleImportFile(input){
   reader.readAsText(file);
 }
 function resetAllData(){
-  if(!confirm("Xoá TOÀN BỘ dữ liệu (phòng, số điện nước, hoá đơn) trên máy này? Hành động không thể hoàn tác.")) return;
-  if(!confirm("Bạn chắc chắn chứ? Hãy xuất file sao lưu trước nếu chưa chắc chắn.")) return;
-  DATA = defaultData();
-  saveData();
-  setTab("dashboard");
-  toast("Đã xoá toàn bộ dữ liệu");
+  openTypedConfirm({
+    title: "Xoá toàn bộ dữ liệu",
+    message: "Xoá TOÀN BỘ dữ liệu (phòng, số điện nước, hoá đơn) trên máy này. Hành động không thể hoàn tác — hãy chắc chắn bạn đã xuất file sao lưu nếu chưa chắc chắn.",
+    confirmLabel: "Xoá toàn bộ dữ liệu",
+    onConfirm: function(){
+      DATA = defaultData();
+      saveData();
+      setTab("dashboard");
+      toast("Đã xoá toàn bộ dữ liệu");
+    }
+  });
 }
 
 /* ---- force-update: clear only the service-worker cache + registration, never touches saved data ---- */
