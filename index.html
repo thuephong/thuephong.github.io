@@ -561,7 +561,7 @@ a{color:inherit;}
    Du lieu luu 100% cuc bo tren may (localStorage).
    ========================================================= */
 
-var APP_VERSION = "2026.07.15-3";
+var APP_VERSION = "2026.07.15-4";
 var STORAGE_KEY = "sotrotro_data_v1";
 
 function defaultData(){
@@ -698,6 +698,21 @@ function toast(msg){
 
 function getRoom(id){ return DATA.rooms.find(function(r){return r.id===id;}); }
 function activeRooms(){ return DATA.rooms.filter(function(r){return r.active!==false;}); }
+/* Rooms relevant to a given month's report: currently-active rooms (so they're
+   prompted for entry) PLUS any room that actually has recorded data for that
+   month — even if it has since been checked out. This keeps past months'
+   revenue intact when a room is later marked "đã trả phòng". */
+function roomsForMonth(month){
+  return DATA.rooms.filter(function(r){
+    return r.active!==false || !!getEntry(r.id, month);
+  });
+}
+function roomsForMonths(months){
+  return DATA.rooms.filter(function(r){
+    if(r.active!==false) return true;
+    return months.some(function(mk){ return !!getEntry(r.id, mk); });
+  });
+}
 
 function roomEntries(roomId){
   return DATA.entries.filter(function(e){return e.roomId===roomId;})
@@ -737,7 +752,7 @@ function computeBreakdown(e){
 }
 
 function monthSummary(month){
-  var rooms = activeRooms();
+  var rooms = roomsForMonth(month);
   var totalRent=0, totalElec=0, totalWater=0, totalOther=0, totalAll=0, received=0, doneCount=0, paidCount=0;
   rooms.forEach(function(r){
     var e = getEntry(r.id, month);
@@ -820,7 +835,7 @@ function roomInitial(name){
 function renderDashboard(){
   var month = UI.month;
   var sum = monthSummary(month);
-  var rooms = activeRooms();
+  var rooms = roomsForMonth(month);
 
   var html = "";
   html += topBar({
@@ -877,7 +892,7 @@ function renderDashboard(){
     }
     html += '<div class="room-card" data-action="roomCardTap" data-room="'+r.id+'">'+
       '<div class="avatar">'+esc(roomInitial(r.name))+'</div>'+
-      '<div class="body"><div class="name">'+esc(r.name)+'</div><div class="meta">'+sub+'</div></div>'+
+      '<div class="body"><div class="name">'+esc(r.name)+(r.active===false?' <span class="chip chip-pending" style="margin-top:0;">Đã trả phòng</span>':'')+'</div><div class="meta">'+sub+'</div></div>'+
       '<div class="right"><div class="amount">'+amount+'</div>'+chip+'</div>'+
       '</div>';
   });
@@ -1035,7 +1050,7 @@ function statCardHTML(r, months, elecArr, waterArr, payArr){
   var totalCollected=0, totalOwed=0;
   payArr.forEach(function(p){ if(p){ var rec=p.received==null?0:p.received; totalCollected+=rec; totalOwed+=Math.max(0,p.total-rec); } });
   var html = '<div class="card stat-card">';
-  html += '<div class="stat-room">'+esc(r.name)+(r.tenantName? ' <span class="chip chip-pending" style="margin-top:0;">'+esc(r.tenantName)+'</span>':'')+'</div>';
+  html += '<div class="stat-room">'+esc(r.name)+(r.active===false? ' <span class="chip chip-pending" style="margin-top:0;">Đã trả phòng</span>' : (r.tenantName? ' <span class="chip chip-pending" style="margin-top:0;">'+esc(r.tenantName)+'</span>':''))+'</div>';
   html += '<div class="stat-chart-label">'+ICONS.bolt+' Điện (kWh)<span class="stat-delta '+elecDelta.cls+'">'+elecDelta.text+'</span></div>';
   html += statBarsHTML(elecArr);
   html += monthsHtml;
@@ -1052,7 +1067,7 @@ function statCardHTML(r, months, elecArr, waterArr, payArr){
 function renderStats(){
   var range = UI.statRange || 6;
   var months = statMonthsRange(range);
-  var rooms = activeRooms();
+  var rooms = roomsForMonths(months);
   var html = "";
   html += topBar({
     icon: ICONS.chart,
